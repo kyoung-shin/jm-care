@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  DIRECTOR
+  INSTRUCTOR
+  PARENT
+}
+
+model Branch {
+  id       String    @id @default(cuid())
+  name     String
+  users    User[]
+  students Student[]
+}
+
+model User {
+  id        String    @id @default(cuid())
+  clerkId   String    @unique
+  name      String
+  email     String    @unique
+  role      Role
+  branchId  String?
+  branch    Branch?   @relation(fields: [branchId], references: [id])
+  students  Student[]
+  createdAt DateTime  @default(now())
+}
+
+model Student {
+  id               String       @id @default(cuid())
+  name             String
+  initial          String
+  grade            String
+  school           String
+  enrolledMonths   Int          @default(0)
+  finalGoalSchool  String?
+  finalGoalDetail  String?
+  finalGoalTrack   String?
+  midGoalSchool    String?
+  midGoalDetail    String?
+  midGoalTrack     String?
+  daysUntilCSAT    Int?
+  daysUntilHS      Int?
+  overallReadiness Int?
+  peerAverage      Int?
+  instructorId     String
+  instructor       User         @relation(fields: [instructorId], references: [id])
+  branchId         String
+  branch           Branch       @relation(fields: [branchId], references: [id])
+  mockExams        MockExam[]
+  counselings      Counseling[]
+  reports          Report[]
+  createdAt        DateTime     @default(now())
+}
+
+model MockExam {
+  id         String   @id @default(cuid())
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  name       String
+  date       String
+  fullName   String?
+  korean     Float?
+  english    Float?
+  math       Float?
+  science    Float?
+  avg        Float?
+  percentile String?
+  createdAt  DateTime @default(now())
+}
+
+model Counseling {
+  id             String   @id @default(cuid())
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date           String
+  type           String
+  topic          String
+  summary        String
+  internalMemo   String?
+  parentShare    String?
+  actionName     String?
+  actionOwner    String?
+  actionDeadline String?
+  actionStatus   String   @default("in-progress")
+  createdAt      DateTime @default(now())
+}
+
+model Report {
+  id        String    @id @default(cuid())
+  studentId String
+  student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  period    String
+  message   String?
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+}
