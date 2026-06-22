@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server';
+import { currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
@@ -7,9 +7,8 @@ export async function POST(
   { params }: { params: Promise<{ clerkId: string }> }
 ) {
   try {
-    const { sessionClaims } = await auth();
-    const callerRole = (sessionClaims?.metadata as any)?.role;
-    if (callerRole !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const caller = await currentUser();
+    if (caller?.publicMetadata?.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { clerkId } = await params;
 

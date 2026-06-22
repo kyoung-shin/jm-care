@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation';
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 
 export default async function DashboardRoot() {
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
   if (!userId) redirect('/sign-in');
-  const role = (sessionClaims?.metadata as Record<string, string> | undefined)?.role;
+  const user = await currentUser();
+  const role = user?.publicMetadata?.role as string | undefined;
   if (role === 'ADMIN') redirect('/admin');
   if (role === 'DIRECTOR') redirect('/director');
   if (role === 'INSTRUCTOR') redirect('/instructor');
