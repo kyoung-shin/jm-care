@@ -28,15 +28,18 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
+export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const student = await prisma.student.create({ data: body });
+    const { userId, sessionClaims } = await auth();
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const role = (sessionClaims?.metadata as any)?.role;
+    if (!['ADMIN', 'DIRECTOR', 'INSTRUCTOR'].includes(role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const data = await req.json();
+    const student = await prisma.student.create({ data });
     return NextResponse.json(student, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to create student' }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

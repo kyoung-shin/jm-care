@@ -25,16 +25,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const { id } = await params;
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const body = await req.json();
-    const student = await prisma.student.update({ where: { id }, data: body });
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { id } = await params;
+    const data = await req.json();
+    const student = await prisma.student.update({ where: { id }, data });
     return NextResponse.json(student);
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to update student' }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { userId, sessionClaims } = await auth();
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const role = (sessionClaims?.metadata as any)?.role;
+    if (!['ADMIN', 'DIRECTOR'].includes(role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const { id } = await params;
+    await prisma.student.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

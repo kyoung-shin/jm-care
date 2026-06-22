@@ -4,7 +4,10 @@ import { UserButton } from '@clerk/nextjs';
 const NAV = [
   { href: '/admin', label: '대시보드' },
   { href: '/admin/students', label: '학생 관리' },
-  { href: '/admin/users', label: '사용자 관리' },
+  { href: '/admin/users', label: '회원 관리' },
+  { href: '/admin/exams', label: '모의고사' },
+  { href: '/admin/counselings', label: '상담 기록' },
+  { href: '/admin/branches', label: '지점 관리' },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -27,7 +30,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <UserButton />
         </div>
       </div>
-      <div className="max-w-7xl mx-auto px-8 py-8">{children}</div>
+      <div>{children}</div>
     </div>
   );
 }

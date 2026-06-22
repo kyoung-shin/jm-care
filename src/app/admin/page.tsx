@@ -1,85 +1,79 @@
-import { prisma } from '@/lib/db';
-import { Users, MessageSquare, FileText, BookOpen } from 'lucide-react';
+'use client';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Users, BookOpen, Clock, MessageSquare, ChevronRight } from 'lucide-react';
 
-async function getStats() {
-  try {
-    const [studentCount, userCount, counselingCount, reportCount] = await Promise.all([
-      prisma.student.count(),
-      prisma.user.count(),
-      prisma.counseling.count(),
-      prisma.report.count(),
-    ]);
-    return { studentCount, userCount, counselingCount, reportCount };
-  } catch {
-    return { studentCount: 0, userCount: 0, counselingCount: 0, reportCount: 0 };
-  }
-}
+interface Stats { students: number; instructors: number; pendingCount: number; recentCounselings: any[]; recentPending: any[]; }
 
-export default async function AdminPage() {
-  const stats = await getStats();
+export default function AdminPage() {
+  const [stats, setStats] = useState<Stats | null>(null);
 
-  const cards = [
-    { label: '전체 학생 수', value: stats.studentCount, icon: Users, color: 'bg-blue-50 border-blue-200 text-blue-700' },
-    { label: '전체 강사 수', value: stats.userCount, icon: Users, color: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
-    { label: '총 상담 기록 수', value: stats.counselingCount, icon: MessageSquare, color: 'bg-amber-50 border-amber-200 text-amber-700' },
-    { label: '발송된 리포트 수', value: stats.reportCount, icon: FileText, color: 'bg-purple-50 border-purple-200 text-purple-700' },
-  ];
+  useEffect(() => {
+    fetch('/api/admin/stats').then(r => r.json()).then(d => {
+      if (d.students !== undefined) setStats(d);
+    }).catch(() => {});
+  }, []);
+
+  const s = stats ?? { students: 0, instructors: 0, pendingCount: 0, recentCounselings: [], recentPending: [] };
 
   return (
-    <div>
-      <div className="mb-8">
-        <div className="serif-ko text-3xl font-black text-slate-900">어드민 대시보드</div>
-        <div className="text-sm text-slate-500 mt-1">시스템 전체 현황을 확인합니다</div>
+    <div className="ko-sans max-w-7xl mx-auto px-8 py-8">
+      <div className="mb-7 border-b border-stone-200 pb-5">
+        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1.5">Admin Dashboard</div>
+        <div className="serif-ko text-3xl font-black text-slate-900">관리자 대시보드</div>
       </div>
-
       <div className="grid grid-cols-4 gap-4 mb-8">
-        {cards.map((card, i) => (
-          <div key={i} className={`border rounded-xl p-6 ${card.color}`}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-xs font-semibold uppercase tracking-wider opacity-70">{card.label}</div>
-              <card.icon size={16} />
+        {[
+          { label: '전체 학생', value: s.students, icon: Users, href: '/admin/students', color: 'text-blue-700' },
+          { label: '강사', value: s.instructors, icon: BookOpen, href: '/admin/users', color: 'text-emerald-700' },
+          { label: '승인 대기', value: s.pendingCount, icon: Clock, href: '/admin/users', color: 'text-amber-700' },
+          { label: '최근 상담', value: s.recentCounselings.length, icon: MessageSquare, href: '/admin/counselings', color: 'text-purple-700' },
+        ].map(item => (
+          <Link key={item.label} href={item.href} className="bg-white border border-stone-200 rounded-xl p-5 hover:border-slate-400 hover:shadow-sm transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] uppercase tracking-widest text-slate-500">{item.label}</div>
+              <item.icon size={14} className={item.color} />
             </div>
-            <div className="text-4xl font-black num">{card.value}</div>
-          </div>
+            <div className={`text-4xl font-black num ${item.color}`}>{item.value}</div>
+          </Link>
         ))}
       </div>
-
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-white border border-stone-200 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <BookOpen size={16} className="text-slate-700" />
-            <div className="serif-ko text-lg font-bold text-slate-900">빠른 메뉴</div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="serif-ko text-base font-bold text-slate-900">승인 대기 신청</div>
+            <Link href="/admin/users" className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1">전체 보기 <ChevronRight size={12} /></Link>
           </div>
-          <div className="space-y-2">
-            {[
-              { href: '/admin/students', label: '학생 목록 관리', desc: '신규 등록, 담임 배정, 모의고사 업로드' },
-              { href: '/admin/users', label: '사용자 관리', desc: '강사·원장·학부모 계정 및 권한 설정' },
-              { href: '/director', label: '원장 뷰로 이동', desc: '학생 종합 현황 대시보드' },
-            ].map((item, i) => (
-              <a key={i} href={item.href} className="flex items-start gap-3 p-3 border border-stone-200 rounded-lg hover:bg-stone-50 hover:border-slate-400 transition-all">
-                <div className="flex-1">
-                  <div className="text-sm font-semibold text-slate-900">{item.label}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">{item.desc}</div>
+          {s.recentPending.length === 0
+            ? <div className="text-sm text-slate-400 py-4 text-center">대기 중인 신청이 없습니다</div>
+            : s.recentPending.map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between py-3 border-b border-stone-100 last:border-0">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">{p.name}</div>
+                  <div className="text-xs text-slate-500">{p.email} · {p.requestedRole}</div>
                 </div>
-              </a>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white border border-stone-200 rounded-xl p-6">
-          <div className="serif-ko text-lg font-bold text-slate-900 mb-4">시스템 정보</div>
-          <div className="space-y-3 text-sm">
-            {[
-              { label: 'DB 연결', value: stats.studentCount >= 0 ? '✓ 정상' : '✗ 오류', ok: stats.studentCount >= 0 },
-              { label: '버전', value: 'JM-CARE v0.6', ok: true },
-              { label: '환경', value: process.env.NODE_ENV ?? 'unknown', ok: true },
-            ].map((row, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-stone-100 last:border-0">
-                <span className="text-slate-500">{row.label}</span>
-                <span className={`font-semibold num ${row.ok ? 'text-emerald-700' : 'text-red-700'}`}>{row.value}</span>
+                <Link href="/admin/users" className="text-xs px-3 py-1 bg-amber-100 text-amber-700 rounded-full font-semibold hover:bg-amber-200">승인하기</Link>
               </div>
-            ))}
+            ))
+          }
+        </div>
+        <div className="bg-white border border-stone-200 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="serif-ko text-base font-bold text-slate-900">최근 상담 기록</div>
+            <Link href="/admin/counselings" className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1">전체 보기 <ChevronRight size={12} /></Link>
           </div>
+          {s.recentCounselings.length === 0
+            ? <div className="text-sm text-slate-400 py-4 text-center">상담 기록이 없습니다</div>
+            : s.recentCounselings.map((c: any) => (
+              <div key={c.id} className="py-3 border-b border-stone-100 last:border-0">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-semibold text-slate-900">{c.student?.name}</div>
+                  <div className="text-xs text-slate-500">{c.type} · {c.topic}</div>
+                </div>
+                <div className="text-xs text-slate-500 mt-0.5 truncate">{c.summary}</div>
+              </div>
+            ))
+          }
         </div>
       </div>
     </div>

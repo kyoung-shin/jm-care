@@ -1,104 +1,141 @@
 'use client';
+import { useEffect, useState } from 'react';
+import { Check, X, ChevronDown } from 'lucide-react';
 
-import { useState, useEffect } from 'react';
-import { Users, Plus } from 'lucide-react';
+interface PendingUser { id: string; clerkId: string; name: string; email: string; requestedRole: string; reason?: string; status: string; createdAt: string; }
+interface User { id: string; clerkId: string; name: string; email: string; role: string; branch?: { name: string }; }
 
-type Role = 'DIRECTOR' | 'INSTRUCTOR' | 'PARENT';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: Role;
-  branch: { name: string } | null;
-  createdAt: string;
-  _count?: { students: number };
-}
-
-const ROLE_LABELS: Record<Role, string> = {
-  DIRECTOR: '원장',
-  INSTRUCTOR: '강사',
-  PARENT: '학부모',
-};
-
-const ROLE_STYLES: Record<Role, string> = {
-  DIRECTOR: 'bg-amber-50 text-amber-700 border-amber-200',
-  INSTRUCTOR: 'bg-blue-50 text-blue-700 border-blue-200',
-  PARENT: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-};
+const ROLES = ['DIRECTOR', 'INSTRUCTOR', 'PARENT', 'ADMIN'];
+const ROLE_LABELS: Record<string, string> = { DIRECTOR: '원장', INSTRUCTOR: '강사', PARENT: '학부모', ADMIN: '관리자', PENDING: '대기' };
 
 export default function AdminUsersPage() {
+  const [pending, setPending] = useState<PendingUser[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<Record<string, boolean>>({});
+  const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    fetch('/api/users')
-      .then(r => r.json())
-      .then(data => { setUsers(Array.isArray(data) ? data : []); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+  const load = async () => {
+    const [p, u] = await Promise.all([
+      fetch('/api/admin/pending-users').then(r => r.json()),
+      fetch('/api/admin/users').then(r => r.json()),
+    ]);
+    if (Array.isArray(p)) setPending(p);
+    if (Array.isArray(u)) setUsers(u);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const approve = async (clerkId: string) => {
+    const role = selectedRoles[clerkId] || 'INSTRUCTOR';
+    setLoading(l => ({ ...l, [clerkId]: true }));
+    await fetch(`/api/admin/users/${clerkId}/approve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+    setLoading(l => ({ ...l, [clerkId]: false }));
+    load();
+  };
+
+  const reject = async (clerkId: string) => {
+    setLoading(l => ({ ...l, [clerkId]: true }));
+    await fetch(`/api/admin/users/${clerkId}/reject`, { method: 'POST' });
+    setLoading(l => ({ ...l, [clerkId]: false }));
+    load();
+  };
+
+  const changeRole = async (clerkId: string, role: string) => {
+    await fetch('/api/admin/users', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clerkId, role }),
+    });
+    load();
+  };
 
   return (
-    <div>
-      <div className="mb-8 flex items-end justify-between">
-        <div>
-          <div className="serif-ko text-3xl font-black text-slate-900">사용자 관리</div>
-          <div className="text-sm text-slate-500 mt-1">강사 · 원장 · 학부모 계정 및 권한 설정</div>
-        </div>
-        <button className="px-3 py-1.5 bg-slate-900 text-white rounded text-xs hover:bg-slate-800 flex items-center gap-1">
-          <Plus size={12} /> 사용자 등록
-        </button>
+    <div className="ko-sans max-w-6xl mx-auto px-8 py-8">
+      <div className="mb-7 border-b border-stone-200 pb-5">
+        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1.5">User Management</div>
+        <div className="serif-ko text-3xl font-black text-slate-900">회원 관리</div>
       </div>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
-        <strong>역할 설정 방법:</strong> Clerk 대시보드에서 사용자의 <code className="bg-amber-100 px-1 rounded">publicMetadata.role</code>을{' '}
-        <code className="bg-amber-100 px-1 rounded">DIRECTOR</code> / <code className="bg-amber-100 px-1 rounded">INSTRUCTOR</code> / <code className="bg-amber-100 px-1 rounded">PARENT</code>로 설정하면
-        로그인 시 자동으로 해당 뷰로 리다이렉트됩니다.
-      </div>
-
-      <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center text-slate-500 text-sm">데이터 로딩 중...</div>
-        ) : users.length === 0 ? (
-          <div className="p-12 text-center">
-            <Users size={32} className="text-slate-300 mx-auto mb-3" />
-            <div className="text-slate-500 text-sm">등록된 사용자가 없습니다</div>
-            <div className="text-xs text-slate-400 mt-1">시드 스크립트를 실행하거나 직접 Clerk에서 사용자를 생성하세요</div>
+      {pending.length > 0 && (
+        <div className="mb-8">
+          <div className="serif-ko text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+            승인 대기 <span className="text-amber-600 num">({pending.length})</span>
           </div>
-        ) : (
+          <div className="space-y-3">
+            {pending.map(p => (
+              <div key={p.id} className="bg-amber-50 border border-amber-200 rounded-xl p-5 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-amber-200 flex items-center justify-center serif-ko font-bold text-amber-800">
+                  {p.name.charAt(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-slate-900">{p.name}</div>
+                  <div className="text-xs text-slate-500">{p.email}</div>
+                  <div className="text-xs text-amber-700 mt-1">신청 역할: {ROLE_LABELS[p.requestedRole] || p.requestedRole}{p.reason && ` · ${p.reason}`}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedRoles[p.clerkId] || p.requestedRole}
+                    onChange={e => setSelectedRoles(r => ({ ...r, [p.clerkId]: e.target.value }))}
+                    className="text-sm border border-stone-300 rounded-lg px-3 py-1.5 bg-white"
+                  >
+                    {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                  </select>
+                  <button
+                    onClick={() => approve(p.clerkId)}
+                    disabled={loading[p.clerkId]}
+                    className="flex items-center gap-1 px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    <Check size={14} /> 승인
+                  </button>
+                  <button
+                    onClick={() => reject(p.clerkId)}
+                    disabled={loading[p.clerkId]}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-white border border-stone-300 rounded-lg text-sm text-slate-600 hover:bg-stone-50 disabled:opacity-50"
+                  >
+                    <X size={14} /> 거절
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div className="serif-ko text-lg font-bold text-slate-900 mb-4">전체 회원 ({users.length})</div>
+        <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-stone-50 text-[11px] text-slate-600">
+            <thead className="bg-stone-50 text-[11px] text-slate-600 border-b border-stone-200">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">이름</th>
                 <th className="px-4 py-3 text-left font-semibold">이메일</th>
-                <th className="px-4 py-3 text-left font-semibold">역할</th>
                 <th className="px-4 py-3 text-left font-semibold">지점</th>
-                <th className="px-4 py-3 text-center font-semibold">담당 학생</th>
-                <th className="px-4 py-3 text-center font-semibold">등록일</th>
-                <th className="px-4 py-3 text-center font-semibold">관리</th>
+                <th className="px-4 py-3 text-left font-semibold">역할</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((u, i) => (
-                <tr key={u.id} className={`border-t border-stone-200 hover:bg-stone-50 ${i % 2 === 0 ? '' : 'bg-stone-50/30'}`}>
-                  <td className="px-4 py-3 font-bold text-slate-900">{u.name}</td>
-                  <td className="px-4 py-3 text-slate-600">{u.email}</td>
+              {users.map(u => (
+                <tr key={u.id} className="border-t border-stone-100 hover:bg-stone-50">
+                  <td className="px-4 py-3 font-semibold text-slate-900">{u.name}</td>
+                  <td className="px-4 py-3 text-slate-500">{u.email}</td>
+                  <td className="px-4 py-3 text-slate-500">{u.branch?.name || '—'}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-[11px] px-2 py-0.5 rounded-full border font-semibold ${ROLE_STYLES[u.role]}`}>
-                      {ROLE_LABELS[u.role]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{u.branch?.name ?? '-'}</td>
-                  <td className="px-4 py-3 text-center num text-slate-600">{u._count?.students ?? 0}명</td>
-                  <td className="px-4 py-3 text-center text-slate-500 num text-xs">{new Date(u.createdAt).toLocaleDateString('ko-KR')}</td>
-                  <td className="px-4 py-3 text-center">
-                    <button className="text-[11px] px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded">편집</button>
+                    <select
+                      value={u.role}
+                      onChange={e => changeRole(u.clerkId, e.target.value)}
+                      className="text-xs border border-stone-300 rounded-lg px-2 py-1 bg-white"
+                    >
+                      {['PENDING', ...ROLES].map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+                    </select>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
+        </div>
       </div>
     </div>
   );

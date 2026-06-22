@@ -8,6 +8,8 @@ datasource db {
 }
 
 enum Role {
+  PENDING
+  ADMIN
   DIRECTOR
   INSTRUCTOR
   PARENT
@@ -25,20 +27,33 @@ model User {
   clerkId   String    @unique
   name      String
   email     String    @unique
-  role      Role
+  role      Role      @default(PENDING)
   branchId  String?
   branch    Branch?   @relation(fields: [branchId], references: [id])
-  students  Student[]
+  students  Student[] @relation("InstructorStudents")
   createdAt DateTime  @default(now())
 }
 
+model PendingUser {
+  id            String    @id @default(cuid())
+  clerkId       String    @unique
+  name          String
+  email         String
+  requestedRole String
+  reason        String?
+  status        String    @default("PENDING")
+  approvedAt    DateTime?
+  approvedBy    String?
+  createdAt     DateTime  @default(now())
+}
+
 model Student {
-  id               String       @id @default(cuid())
+  id               String        @id @default(cuid())
   name             String
   initial          String
   grade            String
   school           String
-  enrolledMonths   Int          @default(0)
+  enrolledMonths   Int           @default(0)
   finalGoalSchool  String?
   finalGoalDetail  String?
   finalGoalTrack   String?
@@ -50,13 +65,14 @@ model Student {
   overallReadiness Int?
   peerAverage      Int?
   instructorId     String
-  instructor       User         @relation(fields: [instructorId], references: [id])
+  instructor       User          @relation("InstructorStudents", fields: [instructorId], references: [id])
   branchId         String
-  branch           Branch       @relation(fields: [branchId], references: [id])
+  branch           Branch        @relation(fields: [branchId], references: [id])
   mockExams        MockExam[]
   counselings      Counseling[]
   reports          Report[]
-  createdAt        DateTime     @default(now())
+  goalHistories    GoalHistory[]
+  createdAt        DateTime      @default(now())
 }
 
 model MockExam {
@@ -90,6 +106,19 @@ model Counseling {
   actionDeadline String?
   actionStatus   String   @default("in-progress")
   createdAt      DateTime @default(now())
+}
+
+model GoalHistory {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date      String
+  label     String
+  target    String
+  track     String
+  reason    String?
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 model Report {
