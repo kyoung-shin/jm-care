@@ -24,7 +24,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               ))}
             </nav>
           </div>
-          <UserButton afterSignOutUrl="/sign-in" />
+          <UserButton />
         </div>
       </div>
       <div className="max-w-7xl mx-auto px-8 py-8">{children}</div>

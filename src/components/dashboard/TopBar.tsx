@@ -45,7 +45,7 @@ export default function TopBar() {
             <Bell size={16} className="text-slate-400" />
             <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
           </div>
-          <UserButton afterSignOutUrl="/sign-in" />
+          <UserButton />
         </div>
       </div>
     </div>
