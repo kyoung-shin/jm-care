@@ -4,7 +4,7 @@ export default function SignInPage() {
   return (
     <div className="ko-sans min-h-screen bg-stone-50 flex items-center justify-center">
       <SignIn
-        fallbackRedirectUrl="/"
+        forceRedirectUrl="/"
         signUpUrl="/sign-up"
       />
     </div>
