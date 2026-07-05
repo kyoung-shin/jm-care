@@ -1,4 +1,5 @@
 'use client';
+import RoleGuard from '@/components/RoleGuard';
 
 import { useState } from 'react';
 import {
@@ -15,6 +16,7 @@ export default function ParentPage() {
   const d = parentData;
 
   return (
+    <RoleGuard allowed={['PARENT']}>
     <div className="bg-[#f9f6f0] min-h-screen">
       <div className="max-w-5xl mx-auto px-8 py-10">
         <div className="mb-8 pb-6 border-b border-stone-300/60">
@@ -248,5 +250,6 @@ export default function ParentPage() {
 
       {reportOpen && <ReportModal mode="parent" onClose={() => setReportOpen(false)} />}
     </div>
+    </RoleGuard>
   );
 }

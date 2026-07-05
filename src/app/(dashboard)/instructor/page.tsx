@@ -1,4 +1,5 @@
 'use client';
+import RoleGuard from '@/components/RoleGuard';
 
 import { useState, useEffect } from 'react';
 import {
@@ -36,6 +37,7 @@ export default function InstructorPage() {
   const d = instructorData;
 
   return (
+    <RoleGuard allowed={['INSTRUCTOR', 'DIRECTOR']}>
     <div className="max-w-7xl mx-auto px-8 py-8">
       <div className="mb-7 flex items-end justify-between border-b border-stone-200 pb-5">
         <div>
@@ -247,5 +249,6 @@ export default function InstructorPage() {
         />
       )}
     </div>
+    </RoleGuard>
   );
 }

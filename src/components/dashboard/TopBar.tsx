@@ -3,7 +3,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Bell } from 'lucide-react';
-import { UserButton } from '@clerk/nextjs';
+import { UserButton, useUser } from '@clerk/nextjs';
+
+const ROLE_LABEL: Record<string, string> = {
+  DIRECTOR: '원장',
+  INSTRUCTOR: '강사',
+  PARENT: '학부모',
+};
 
 const PERSPECTIVES = [
   { label: '원장', href: '/director' },
@@ -13,6 +19,8 @@ const PERSPECTIVES = [
 
 export default function TopBar() {
   const pathname = usePathname();
+  const { user } = useUser();
+  const role = user?.publicMetadata?.role as string | undefined;
 
   return (
     <div className="bg-slate-900 text-white">
@@ -21,26 +29,28 @@ export default function TopBar() {
           <Link href="/" className="serif-ko text-xl font-black tracking-tight">JM-CARE</Link>
           <div className="h-4 w-px bg-slate-700" />
           <div className="text-xs text-slate-400">종로엠스쿨 학생 종합관리 시스템</div>
-          <div className="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded font-medium border border-amber-500/30">
-            Prototype v0.6 · 상담기록 활성화
-          </div>
         </div>
         <div className="flex items-center gap-5">
-          <div className="text-xs text-slate-400 num">2026. 05. 12 (월)</div>
-          <div className="flex bg-slate-800 rounded-md p-0.5 text-xs">
-            {PERSPECTIVES.map(p => {
-              const isActive = pathname.startsWith(p.href);
-              return (
-                <Link
-                  key={p.label}
-                  href={p.href}
-                  className={`px-3 py-1 rounded transition-colors ${isActive ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  {p.label} 관점
-                </Link>
-              );
-            })}
-          </div>
+          {role === 'DIRECTOR' ? (
+            <div className="flex bg-slate-800 rounded-md p-0.5 text-xs">
+              {PERSPECTIVES.map(p => {
+                const isActive = pathname.startsWith(p.href);
+                return (
+                  <Link
+                    key={p.label}
+                    href={p.href}
+                    className={`px-3 py-1 rounded transition-colors ${isActive ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    {p.label} 관점
+                  </Link>
+                );
+              })}
+            </div>
+          ) : role ? (
+            <div className="text-xs px-3 py-1.5 bg-slate-800 rounded-md text-slate-300 font-medium">
+              {ROLE_LABEL[role] ?? role} 관점
+            </div>
+          ) : null}
           <div className="relative">
             <Bell size={16} className="text-slate-400" />
             <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
