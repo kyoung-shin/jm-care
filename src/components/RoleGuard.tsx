@@ -23,13 +23,14 @@ export default function RoleGuard({
   useEffect(() => {
     if (!isLoaded) return;
     const role = user?.publicMetadata?.role as string | undefined;
-    if (!role || !allowed.includes(role)) {
+    // ADMIN can access any view; otherwise check allowed list
+    if (!role || (role !== 'ADMIN' && !allowed.includes(role))) {
       router.replace(ROLE_ROUTES[role ?? ''] ?? '/pending');
     }
   }, [isLoaded, user]);
 
   if (!isLoaded) return null;
   const role = user?.publicMetadata?.role as string | undefined;
-  if (!role || !allowed.includes(role)) return null;
+  if (!role || (role !== 'ADMIN' && !allowed.includes(role))) return null;
   return <>{children}</>;
 }
