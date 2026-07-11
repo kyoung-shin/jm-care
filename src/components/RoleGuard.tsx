@@ -1,6 +1,5 @@
 'use client';
-import { useEffect } from 'react';
-import { useUser } from '@clerk/nextjs';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 const ROLE_ROUTES: Record<string, string> = {
@@ -8,6 +7,7 @@ const ROLE_ROUTES: Record<string, string> = {
   DIRECTOR: '/director',
   INSTRUCTOR: '/instructor',
   PARENT: '/parent',
+  STUDENT: '/student',
 };
 
 export default function RoleGuard({
@@ -17,20 +17,33 @@ export default function RoleGuard({
   allowed: string[];
   children: React.ReactNode;
 }) {
-  const { user, isLoaded } = useUser();
   const router = useRouter();
+  const [role, setRole] = useState<string | undefined>(undefined);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!isLoaded) return;
-    const role = user?.publicMetadata?.role as string | undefined;
-    // ADMIN can access any view; otherwise check allowed list
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled) return;
+        setRole(data?.role);
+        setLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
     if (!role || (role !== 'ADMIN' && !allowed.includes(role))) {
       router.replace(ROLE_ROUTES[role ?? ''] ?? '/pending');
     }
-  }, [isLoaded, user]);
+  }, [loaded, role]);
 
-  if (!isLoaded) return null;
-  const role = user?.publicMetadata?.role as string | undefined;
+  if (!loaded) return null;
   if (!role || (role !== 'ADMIN' && !allowed.includes(role))) return null;
   return <>{children}</>;
 }

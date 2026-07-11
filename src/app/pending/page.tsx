@@ -1,9 +1,18 @@
 'use client';
-import { useUser, SignOutButton } from '@clerk/nextjs';
+import { useEffect, useState } from 'react';
 import { Clock, Mail, Phone } from 'lucide-react';
+import LogoutButton from '@/components/LogoutButton';
 
 export default function PendingPage() {
-  const { user } = useUser();
+  const [name, setName] = useState('');
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => setName(data?.name ?? ''))
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="ko-sans min-h-screen bg-stone-50 flex items-center justify-center p-8">
       <div className="max-w-md w-full">
@@ -18,7 +27,7 @@ export default function PendingPage() {
           <div className="text-center mb-6">
             <div className="serif-ko text-2xl font-bold text-slate-900 mb-2">가입 신청이 접수되었습니다</div>
             <div className="text-sm text-slate-600 leading-relaxed">
-              {user?.fullName || user?.firstName || ''}님의 가입 신청을 받았습니다.<br />
+              {name}님의 가입 신청을 받았습니다.<br />
               관리자 승인 후 이용 가능합니다.
             </div>
           </div>
@@ -43,11 +52,7 @@ export default function PendingPage() {
               </div>
             </div>
           </div>
-          <SignOutButton redirectUrl="/sign-in">
-            <button className="w-full py-2.5 border border-stone-300 rounded-lg text-sm text-slate-600 hover:bg-stone-50 transition-colors">
-              로그아웃
-            </button>
-          </SignOutButton>
+          <LogoutButton className="w-full py-2.5 border border-stone-300 rounded-lg text-sm text-slate-600 hover:bg-stone-50 transition-colors block text-center" />
         </div>
       </div>
     </div>

@@ -2,13 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { Bell } from 'lucide-react';
-import { UserButton, useUser } from '@clerk/nextjs';
+import LogoutButton from '@/components/LogoutButton';
 
 const ROLE_LABEL: Record<string, string> = {
   DIRECTOR: '원장',
   INSTRUCTOR: '강사',
   PARENT: '학부모',
+  STUDENT: '학생',
 };
 
 const PERSPECTIVES = [
@@ -19,8 +21,14 @@ const PERSPECTIVES = [
 
 export default function TopBar() {
   const pathname = usePathname();
-  const { user } = useUser();
-  const role = user?.publicMetadata?.role as string | undefined;
+  const [role, setRole] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => setRole(data?.role))
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="bg-slate-900 text-white">
@@ -31,6 +39,14 @@ export default function TopBar() {
           <div className="text-xs text-slate-400">종로엠스쿨 학생 종합관리 시스템</div>
         </div>
         <div className="flex items-center gap-5">
+          {role === 'DIRECTOR' && (
+            <Link
+              href="/director/users"
+              className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${pathname.startsWith('/director/users') ? 'bg-slate-700 text-white' : 'bg-slate-800 text-slate-300 hover:text-white'}`}
+            >
+              가입 승인
+            </Link>
+          )}
           {role === 'DIRECTOR' ? (
             <div className="flex bg-slate-800 rounded-md p-0.5 text-xs">
               {PERSPECTIVES.map(p => {
@@ -55,7 +71,7 @@ export default function TopBar() {
             <Bell size={16} className="text-slate-400" />
             <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
           </div>
-          <UserButton />
+          <LogoutButton />
         </div>
       </div>
     </div>

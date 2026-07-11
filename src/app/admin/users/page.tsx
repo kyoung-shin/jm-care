@@ -2,17 +2,16 @@
 import { useEffect, useState } from 'react';
 import { Check, X, ChevronDown } from 'lucide-react';
 
-interface PendingUser { id: string; clerkId: string; name: string; email: string; requestedRole: string; reason?: string; status: string; createdAt: string; }
-interface User { id: string; clerkId: string; name: string; email: string; role: string; branch?: { name: string }; }
+interface PendingUser { id: string; userId: string; name: string; email?: string; requestedRole: string; reason?: string; status: string; createdAt: string; branch?: { name: string }; }
+interface User { id: string; name: string; email?: string; role: string; branch?: { name: string }; }
 
-const ROLES = ['DIRECTOR', 'INSTRUCTOR', 'PARENT', 'ADMIN'];
-const ROLE_LABELS: Record<string, string> = { DIRECTOR: '원장', INSTRUCTOR: '강사', PARENT: '학부모', ADMIN: '관리자', PENDING: '대기' };
+const ROLES = ['DIRECTOR', 'INSTRUCTOR', 'PARENT', 'STUDENT', 'ADMIN'];
+const ROLE_LABELS: Record<string, string> = { DIRECTOR: '원장', INSTRUCTOR: '강사', PARENT: '학부모', STUDENT: '학생', ADMIN: '관리자', PENDING: '대기' };
 
 export default function AdminUsersPage() {
   const [pending, setPending] = useState<PendingUser[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
-  const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
 
   const load = async () => {
     const [p, u] = await Promise.all([
@@ -25,28 +24,24 @@ export default function AdminUsersPage() {
 
   useEffect(() => { load(); }, []);
 
-  const approve = async (clerkId: string) => {
-    const role = selectedRoles[clerkId] || 'INSTRUCTOR';
-    setLoading(l => ({ ...l, [clerkId]: true }));
-    await fetch(`/api/admin/users/${clerkId}/approve`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role }),
-    });
-    setLoading(l => ({ ...l, [clerkId]: false }));
+  const approve = async (userId: string) => {
+    setLoading(l => ({ ...l, [userId]: true }));
+    await fetch(`/api/admin/users/${userId}/approve`, { method: 'POST' });
+    setLoading(l => ({ ...l, [userId]: false }));
     load();
   };
 
-  const reject = async (clerkId: string) => {
-    setLoading(l => ({ ...l, [clerkId]: true }));
-    await fetch(`/api/admin/users/${clerkId}/reject`, { method: 'POST' });
-    setLoading(l => ({ ...l, [clerkId]: false }));
+  const reject = async (userId: string) => {
+    setLoading(l => ({ ...l, [userId]: true }));
+    await fetch(`/api/admin/users/${userId}/reject`, { method: 'POST' });
+    setLoading(l => ({ ...l, [userId]: false }));
     load();
   };
 
-  const changeRole = async (clerkId: string, role: string) => {
+  const changeRole = async (userId: string, role: string) => {
     await fetch('/api/admin/users', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clerkId, role }),
+      body: JSON.stringify({ userId, role }),
     });
     load();
   };
@@ -62,7 +57,7 @@ export default function AdminUsersPage() {
         <div className="mb-8">
           <div className="serif-ko text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
-            승인 대기 <span className="text-amber-600 num">({pending.length})</span>
+            원장 승인 대기 <span className="text-amber-600 num">({pending.length})</span>
           </div>
           <div className="space-y-3">
             {pending.map(p => (
@@ -72,27 +67,20 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-slate-900">{p.name}</div>
-                  <div className="text-xs text-slate-500">{p.email}</div>
-                  <div className="text-xs text-amber-700 mt-1">신청 역할: {ROLE_LABELS[p.requestedRole] || p.requestedRole}{p.reason && ` · ${p.reason}`}</div>
+                  <div className="text-xs text-slate-500">{p.email} · {p.branch?.name ?? '지점 미지정'}</div>
+                  <div className="text-xs text-amber-700 mt-1">신청 역할: 원장{p.reason && ` · ${p.reason}`}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <select
-                    value={selectedRoles[p.clerkId] || p.requestedRole}
-                    onChange={e => setSelectedRoles(r => ({ ...r, [p.clerkId]: e.target.value }))}
-                    className="text-sm border border-stone-300 rounded-lg px-3 py-1.5 bg-white"
-                  >
-                    {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-                  </select>
                   <button
-                    onClick={() => approve(p.clerkId)}
-                    disabled={loading[p.clerkId]}
+                    onClick={() => approve(p.userId)}
+                    disabled={loading[p.userId]}
                     className="flex items-center gap-1 px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
                   >
                     <Check size={14} /> 승인
                   </button>
                   <button
-                    onClick={() => reject(p.clerkId)}
-                    disabled={loading[p.clerkId]}
+                    onClick={() => reject(p.userId)}
+                    disabled={loading[p.userId]}
                     className="flex items-center gap-1 px-3 py-1.5 bg-white border border-stone-300 rounded-lg text-sm text-slate-600 hover:bg-stone-50 disabled:opacity-50"
                   >
                     <X size={14} /> 거절
@@ -125,7 +113,7 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <select
                       value={u.role}
-                      onChange={e => changeRole(u.clerkId, e.target.value)}
+                      onChange={e => changeRole(u.id, e.target.value)}
                       className="text-xs border border-stone-300 rounded-lg px-2 py-1 bg-white"
                     >
                       {['PENDING', ...ROLES].map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}

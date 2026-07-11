@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server';
+import { getSessionUserId } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
@@ -7,7 +7,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string; examId: string }> }
 ) {
   try {
-    const { userId } = await auth();
+    const userId = await getSessionUserId();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { examId } = await params;
     const data = await req.json();
@@ -23,7 +23,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; examId: string }> }
 ) {
   try {
-    const { userId } = await auth();
+    const userId = await getSessionUserId();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { examId } = await params;
     await prisma.mockExam.delete({ where: { id: examId } });

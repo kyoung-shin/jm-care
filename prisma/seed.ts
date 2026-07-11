@@ -23,11 +23,10 @@ async function main() {
 
   // Instructor
   const instructor = await prisma.user.upsert({
-    where: { clerkId: 'clerk_instructor_baek' },
+    where: { id: 'user_baek_jihun' },
     update: {},
     create: {
       id: 'user_baek_jihun',
-      clerkId: 'clerk_instructor_baek',
       name: '박지훈',
       email: 'baek@jmcare.kr',
       role: 'INSTRUCTOR',
@@ -36,11 +35,10 @@ async function main() {
   });
 
   const instructor2 = await prisma.user.upsert({
-    where: { clerkId: 'clerk_instructor_kim' },
+    where: { id: 'user_kim_seoyeon' },
     update: {},
     create: {
       id: 'user_kim_seoyeon',
-      clerkId: 'clerk_instructor_kim',
       name: '김서연',
       email: 'kimsy@jmcare.kr',
       role: 'INSTRUCTOR',
@@ -50,11 +48,10 @@ async function main() {
 
   // Director
   await prisma.user.upsert({
-    where: { clerkId: 'clerk_director_main' },
+    where: { id: 'user_director_main' },
     update: {},
     create: {
       id: 'user_director_main',
-      clerkId: 'clerk_director_main',
       name: '원장',
       email: 'director@jmcare.kr',
       role: 'DIRECTOR',

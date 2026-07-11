@@ -1,17 +1,21 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { SESSION_COOKIE, verifySessionToken } from '@/lib/session';
 
 const ADMIN_HOSTNAME = 'jm-care-jm-care.vercel.app';
 
-const isPublicRoute = createRouteMatcher([
-  '/sign-in(.*)',
-  '/sign-up(.*)',
-  '/pending',
-  '/onboarding',
-  '/api/webhooks/(.*)',
-]);
+const PUBLIC_ROUTES = [
+  /^\/sign-in(\/.*)?$/,
+  /^\/sign-up(\/.*)?$/,
+  /^\/pending$/,
+  /^\/api\/auth\/(login|signup|logout|check-username)$/,
+  /^\/api\/branches$/,
+];
 
-export default clerkMiddleware(async (auth, req) => {
+function isPublicRoute(pathname: string) {
+  return PUBLIC_ROUTES.some(r => r.test(pathname));
+}
+
+export default async function middleware(req: NextRequest) {
   const hostname = req.headers.get('host') || '';
 
   // Admin domain: rewrite to /admin paths
@@ -29,10 +33,22 @@ export default clerkMiddleware(async (auth, req) => {
     }
   }
 
-  if (!isPublicRoute(req)) {
-    await auth.protect();
+  const pathname = req.nextUrl.pathname;
+  if (!isPublicRoute(pathname)) {
+    const token = req.cookies.get(SESSION_COOKIE)?.value;
+    const userId = token ? await verifySessionToken(token) : null;
+    if (!userId) {
+      if (pathname.startsWith('/api')) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      const url = req.nextUrl.clone();
+      url.pathname = '/sign-in';
+      return NextResponse.redirect(url);
+    }
   }
-});
+
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: [

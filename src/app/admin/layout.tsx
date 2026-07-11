@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { UserButton } from '@clerk/nextjs';
+import { redirect } from 'next/navigation';
+import LogoutButton from '@/components/LogoutButton';
+import { getCurrentAppUser } from '@/lib/auth';
 
 const NAV = [
   { href: '/admin', label: '대시보드' },
@@ -10,7 +12,11 @@ const NAV = [
   { href: '/admin/branches', label: '지점 관리' },
 ];
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const user = await getCurrentAppUser();
+  if (!user) redirect('/sign-in');
+  if (user.role !== 'ADMIN') redirect(user.role === 'PENDING' ? '/pending' : '/');
+
   return (
     <div className="ko-sans min-h-screen bg-stone-50">
       <div className="bg-slate-900 text-white">
@@ -27,7 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               ))}
             </nav>
           </div>
-          <UserButton />
+          <LogoutButton />
         </div>
       </div>
       <div>{children}</div>

@@ -13,33 +13,45 @@ enum Role {
   DIRECTOR
   INSTRUCTOR
   PARENT
+  STUDENT
 }
 
 model Branch {
-  id       String    @id @default(cuid())
-  name     String
-  users    User[]
-  students Student[]
+  id           String        @id @default(cuid())
+  name         String
+  users        User[]
+  students     Student[]
+  pendingUsers PendingUser[]
 }
 
 model User {
-  id        String    @id @default(cuid())
-  clerkId   String    @unique
-  name      String
-  email     String    @unique
-  role      Role      @default(PENDING)
-  branchId  String?
-  branch    Branch?   @relation(fields: [branchId], references: [id])
-  students  Student[] @relation("InstructorStudents")
-  createdAt DateTime  @default(now())
+  id               String       @id @default(cuid())
+  username         String?      @unique
+  passwordHash     String?
+  name             String
+  email            String?      @unique
+  phone            String?
+  role             Role         @default(PENDING)
+  branchId         String?
+  branch           Branch?      @relation(fields: [branchId], references: [id])
+  students         Student[]    @relation("InstructorStudents")
+  studentProfileId String?      @unique
+  studentProfile   Student?     @relation("StudentLogin", fields: [studentProfileId], references: [id])
+  children         Student[]    @relation("StudentParents")
+  createdAt        DateTime     @default(now())
+  pendingUser      PendingUser?
 }
 
 model PendingUser {
   id            String    @id @default(cuid())
-  clerkId       String    @unique
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
-  email         String
+  email         String?
+  phone         String?
   requestedRole String
+  branchId      String?
+  branch        Branch?   @relation(fields: [branchId], references: [id])
   reason        String?
   status        String    @default("PENDING")
   approvedAt    DateTime?
@@ -72,6 +84,8 @@ model Student {
   counselings      Counseling[]
   reports          Report[]
   goalHistories    GoalHistory[]
+  loginUser        User?         @relation("StudentLogin")
+  parents          User[]        @relation("StudentParents")
   createdAt        DateTime      @default(now())
 }
 
