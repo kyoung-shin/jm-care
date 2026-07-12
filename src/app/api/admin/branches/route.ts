@@ -6,8 +6,18 @@ export async function GET() {
   try {
     const user = await getCurrentAppUser();
     if (user?.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    const branches = await prisma.branch.findMany({ include: { _count: { select: { users: true, students: true } } } });
-    return NextResponse.json(branches);
+    const branches = await prisma.branch.findMany({
+      include: {
+        _count: { select: { users: true, students: true } },
+        users: { where: { role: { in: ['DIRECTOR', 'INSTRUCTOR'] } }, select: { name: true, role: true } },
+      },
+    });
+    const result = branches.map(({ users, ...b }) => ({
+      ...b,
+      directorName: users.find(u => u.role === 'DIRECTOR')?.name ?? null,
+      instructorCount: users.filter(u => u.role === 'INSTRUCTOR').length,
+    }));
+    return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }

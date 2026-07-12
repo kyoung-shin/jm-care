@@ -1,7 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Building2, Database, Plus, Search, Upload, Edit3, Send, CheckCircle2, ShieldCheck, School,
+  Building2, Database, Plus, Search, Upload, Edit3, CheckCircle2, ShieldCheck, School,
 } from 'lucide-react';
 
 const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white';
@@ -207,65 +207,114 @@ function AdmissionDB() {
   );
 }
 
+interface BranchRow {
+  id: string;
+  name: string;
+  directorName: string | null;
+  instructorCount: number;
+  _count: { users: number; students: number };
+}
+
+interface PendingSignup {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  requestedRole: string;
+  reason?: string | null;
+  createdAt: string;
+  branch?: { name: string } | null;
+  user?: { username: string | null } | null;
+}
+
+const REQUESTED_ROLE_LABELS: Record<string, string> = {
+  DIRECTOR: '원장', INSTRUCTOR: '강사', PARENT: '학부모', STUDENT: '학생',
+};
+
 function BranchAccounts() {
-  const branches = [
-    { name: '운정점', dir: '최영호 원장', teachers: 12, students: 286, status: '운영중', region: '경기 파주' },
-    { name: '일산점', dir: '김미경 원장', teachers: 18, students: 412, status: '운영중', region: '경기 고양' },
-    { name: '분당점', dir: '이정훈 원장', teachers: 21, students: 487, status: '운영중', region: '경기 성남' },
-    { name: '대전둔산점', dir: '박상우 원장', teachers: 15, students: 334, status: '운영중', region: '대전 서구' },
-    { name: '청주점', dir: '— (배정 예정)', teachers: 0, students: 0, status: '준비중', region: '충북 청주' },
-  ];
+  const [branches, setBranches] = useState<BranchRow[]>([]);
+  const [pending, setPending] = useState<PendingSignup[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/admin/branches').then(r => r.json()),
+      fetch('/api/admin/all-pending-users').then(r => r.json()),
+    ]).then(([b, p]) => {
+      if (Array.isArray(b)) setBranches(b);
+      if (Array.isArray(p)) setPending(p);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-slate-500">지점 계정과 원장·강사 계정을 발급·관리합니다.</div>
-        <button className="px-3 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 hover:bg-violet-700"><Plus size={13} /> 지점 등록</button>
-      </div>
+      <div className="text-sm text-slate-500">현재 등록된 지점과 신규 가입 신청 현황입니다.</div>
       <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-stone-50 text-[11px] text-slate-500">
             <tr>
               <th className="px-5 py-2.5 text-left font-semibold">지점</th>
-              <th className="px-3 py-2.5 text-left font-semibold">지역</th>
               <th className="px-3 py-2.5 text-left font-semibold">원장</th>
               <th className="px-3 py-2.5 text-center font-semibold">강사</th>
               <th className="px-3 py-2.5 text-center font-semibold">재원생</th>
-              <th className="px-3 py-2.5 text-center font-semibold">상태</th>
-              <th className="px-3 py-2.5"></th>
             </tr>
           </thead>
           <tbody>
-            {branches.map((b, i) => (
-              <tr key={i} className="border-t border-stone-100 hover:bg-stone-50/50">
+            {!loading && branches.length === 0 && (
+              <tr><td colSpan={4} className="px-5 py-6 text-center text-slate-400 text-sm">등록된 지점이 없습니다</td></tr>
+            )}
+            {branches.map(b => (
+              <tr key={b.id} className="border-t border-stone-100 hover:bg-stone-50/50">
                 <td className="px-5 py-3 font-semibold text-slate-900">{b.name}</td>
-                <td className="px-3 py-3 text-slate-600 text-xs">{b.region}</td>
-                <td className="px-3 py-3 text-slate-700">{b.dir}</td>
-                <td className="px-3 py-3 text-center num">{b.teachers}</td>
-                <td className="px-3 py-3 text-center num">{b.students}</td>
-                <td className="px-3 py-3 text-center">
-                  <span className={`text-[10px] px-2 py-1 rounded-full border font-semibold ${b.status === '운영중' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{b.status}</span>
-                </td>
-                <td className="px-3 py-3 text-right">
-                  <button className="text-xs text-slate-500 hover:text-slate-900 font-semibold">계정 관리 →</button>
-                </td>
+                <td className="px-3 py-3 text-slate-700">{b.directorName ?? '— (미배정)'}</td>
+                <td className="px-3 py-3 text-center num">{b.instructorCount}</td>
+                <td className="px-3 py-3 text-center num">{b._count.students}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div className="bg-white border border-stone-200 rounded-xl p-5">
-        <div className="serif-ko text-base font-bold text-slate-900 mb-4">신규 계정 발급 (예시)</div>
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="소속 지점" required><select className={inputCls}><option>운정점</option><option>일산점</option></select></Field>
-          <Field label="역할" required><select className={inputCls}><option>원장</option><option>강사</option><option>행정직원</option></select></Field>
-          <Field label="이름" required><input className={inputCls} placeholder="홍길동" /></Field>
-          <Field label="휴대폰" required><input className={inputCls} placeholder="010-0000-0000" /></Field>
-          <Field label="이메일"><input className={inputCls} placeholder="example@jmcare.kr" /></Field>
-          <Field label="권한 범위" hint="(강사: 담당 학생만)"><select className={inputCls}><option>담당 학생만</option><option>지점 전체</option></select></Field>
+
+      <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-stone-200 bg-stone-50">
+          <div className="text-sm font-bold text-slate-900">신규 가입 신청 <span className="text-violet-600 num">({pending.length})</span></div>
         </div>
-        <div className="mt-4 flex justify-end">
-          <button className="px-4 py-1.5 text-xs bg-violet-600 text-white rounded-lg font-semibold flex items-center gap-1 hover:bg-violet-700"><Send size={13} /> 초대 발송</button>
-        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-stone-50/60 text-[11px] text-slate-500">
+            <tr>
+              <th className="px-5 py-2.5 text-left font-semibold">아이디</th>
+              <th className="px-3 py-2.5 text-left font-semibold">이름</th>
+              <th className="px-3 py-2.5 text-left font-semibold">연락처</th>
+              <th className="px-3 py-2.5 text-left font-semibold">이메일</th>
+              <th className="px-3 py-2.5 text-center font-semibold">신청 역할</th>
+              <th className="px-3 py-2.5 text-left font-semibold">지점</th>
+              <th className="px-3 py-2.5 text-left font-semibold">사유</th>
+              <th className="px-3 py-2.5 text-left font-semibold">신청일</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!loading && pending.length === 0 && (
+              <tr><td colSpan={8} className="px-5 py-6 text-center text-slate-400 text-sm">대기 중인 가입 신청이 없습니다</td></tr>
+            )}
+            {pending.map(p => (
+              <tr key={p.id} className="border-t border-stone-100 hover:bg-stone-50/50">
+                <td className="px-5 py-3 font-semibold text-slate-900 whitespace-nowrap">{p.user?.username ?? '—'}</td>
+                <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{p.name}</td>
+                <td className="px-3 py-3 text-slate-600 text-xs whitespace-nowrap">{p.phone || '—'}</td>
+                <td className="px-3 py-3 text-slate-600 text-xs whitespace-nowrap">{p.email || '—'}</td>
+                <td className="px-3 py-3 text-center whitespace-nowrap">
+                  <span className="text-[10px] px-2 py-1 rounded-full border font-semibold bg-violet-50 text-violet-700 border-violet-200">
+                    {REQUESTED_ROLE_LABELS[p.requestedRole] ?? p.requestedRole}
+                  </span>
+                </td>
+                <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{p.branch?.name ?? '—'}</td>
+                <td className="px-3 py-3 text-slate-600 text-xs">{p.reason || '—'}</td>
+                <td className="px-3 py-3 text-slate-500 text-xs num whitespace-nowrap">{new Date(p.createdAt).toLocaleDateString('ko-KR')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
