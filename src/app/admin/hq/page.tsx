@@ -4,6 +4,8 @@ import {
   Building2, Database, Plus, Search, Upload, Edit3, CheckCircle2, ShieldCheck, School,
 } from 'lucide-react';
 import BranchAccountsModal from '@/components/modals/BranchAccountsModal';
+import AddBranchModal from '@/components/modals/AddBranchModal';
+import DeleteBranchModal from '@/components/modals/DeleteBranchModal';
 
 const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white';
 
@@ -283,8 +285,9 @@ function BranchAccounts() {
   const [pending, setPending] = useState<PendingSignup[]>([]);
   const [loading, setLoading] = useState(true);
   const [accountsModalBranch, setAccountsModalBranch] = useState<{ id: string; name: string } | null>(null);
+  const [branchModal, setBranchModal] = useState<'add' | 'delete' | null>(null);
 
-  useEffect(() => {
+  const load = () => {
     Promise.all([
       fetch('/api/admin/branches').then(r => r.json()),
       fetch('/api/admin/all-pending-users').then(r => r.json()),
@@ -293,11 +296,29 @@ function BranchAccounts() {
       if (Array.isArray(p)) setPending(p);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { load(); }, []);
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-slate-500">현재 등록된 지점과 신규 가입 신청 현황입니다.</div>
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-slate-500">현재 등록된 지점과 신규 가입 신청 현황입니다.</div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setBranchModal('add')}
+            className="px-3 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 hover:bg-violet-700"
+          >
+            <Plus size={13} /> 지점 추가
+          </button>
+          <button
+            onClick={() => setBranchModal('delete')}
+            className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-50"
+          >
+            지점 삭제
+          </button>
+        </div>
+      </div>
       <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-stone-50 text-[11px] text-slate-500">
@@ -385,6 +406,18 @@ function BranchAccounts() {
           branchId={accountsModalBranch.id}
           branchName={accountsModalBranch.name}
           onClose={() => setAccountsModalBranch(null)}
+        />
+      )}
+
+      {branchModal === 'add' && (
+        <AddBranchModal onClose={() => setBranchModal(null)} onCreated={load} />
+      )}
+
+      {branchModal === 'delete' && (
+        <DeleteBranchModal
+          branches={branches.map(b => ({ id: b.id, name: b.name }))}
+          onClose={() => setBranchModal(null)}
+          onDeleted={load}
         />
       )}
     </div>
