@@ -1,10 +1,12 @@
 'use client';
 import { useRouter } from 'next/navigation';
+import { flushBeforeLeaveSaves } from '@/lib/beforeLeave';
 
 export default function LogoutButton({ className }: { className?: string }) {
   const router = useRouter();
 
   const logout = async () => {
+    await flushBeforeLeaveSaves();
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/sign-in');
     router.refresh();

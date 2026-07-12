@@ -1,11 +1,12 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Building2, Database, Plus, Search, Upload, Edit3, CheckCircle2, ShieldCheck, School,
 } from 'lucide-react';
 import BranchAccountsModal from '@/components/modals/BranchAccountsModal';
 import AddBranchModal from '@/components/modals/AddBranchModal';
 import DeleteBranchModal from '@/components/modals/DeleteBranchModal';
+import { registerBeforeLeaveSave } from '@/lib/beforeLeave';
 
 const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white';
 
@@ -424,25 +425,84 @@ function BranchAccounts() {
   );
 }
 
+const FRANCHISE_ITEMS = [
+  { key: 'franchiseFee', k: '가맹비', n: 'VAT 포함 · 1회', default: '1,650만원' },
+  { key: 'royalty', k: '월 로열티', n: 'VAT 포함', default: '99만원' },
+  { key: 'regionUnit', k: '권역 단위', n: '권역 내 1위 목표 500명', default: '초중등 5,000명' },
+  { key: 'parentFee', k: '학부모 시스템 사용료', n: '학부모가 본사에 직접 결제', default: '월 25,000원' },
+];
+
 function FranchiseStandards() {
-  const items = [
-    { k: '가맹비', v: '1,650만원', n: 'VAT 포함 · 1회' },
-    { k: '월 로열티', v: '99만원', n: 'VAT 포함' },
-    { k: '권역 단위', v: '초중등 5,000명', n: '권역 내 1위 목표 500명' },
-    { k: '학부모 시스템 사용료', v: '월 25,000원', n: '학부모가 본사에 직접 결제' },
-  ];
+  const [values, setValues] = useState<Record<string, string>>(
+    Object.fromEntries(FRANCHISE_ITEMS.map(it => [it.key, it.default]))
+  );
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const valuesRef = useRef(values);
+  useEffect(() => { valuesRef.current = values; }, [values]);
+
+  const save = () => {
+    const items = FRANCHISE_ITEMS.map(it => ({ key: it.key, value: valuesRef.current[it.key] ?? it.default }));
+    fetch('/api/admin/franchise-standards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+      keepalive: true,
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    fetch('/api/admin/franchise-standards')
+      .then(r => r.json())
+      .then((rows: { key: string; value: string }[]) => {
+        if (!Array.isArray(rows)) return;
+        setValues(prev => {
+          const next = { ...prev };
+          rows.forEach(r => { if (r.key in next) next[r.key] = r.value; });
+          return next;
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const unregister = registerBeforeLeaveSave(save);
+    const handleBeforeUnload = () => save();
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      unregister();
+      save();
+    };
+  }, []);
+
   return (
     <div className="space-y-4">
       <div className="text-sm text-slate-500">프랜차이즈 표준 정책을 관리합니다. 변경 시 전 지점에 자동 반영됩니다.</div>
       <div className="grid grid-cols-2 gap-4">
-        {items.map((it, i) => (
-          <div key={i} className="bg-white border border-stone-200 rounded-xl p-5 flex items-center justify-between">
-            <div>
+        {FRANCHISE_ITEMS.map(it => (
+          <div key={it.key} className="bg-white border border-stone-200 rounded-xl p-5 flex items-center justify-between">
+            <div className="flex-1 min-w-0">
               <div className="text-xs text-slate-500">{it.k}</div>
-              <div className="text-xl font-black text-slate-900 num mt-0.5">{it.v}</div>
+              {editingKey === it.key ? (
+                <input
+                  autoFocus
+                  value={values[it.key] ?? ''}
+                  onChange={e => setValues(v => ({ ...v, [it.key]: e.target.value }))}
+                  onBlur={() => setEditingKey(null)}
+                  onKeyDown={e => { if (e.key === 'Enter') setEditingKey(null); }}
+                  className="text-xl font-black text-slate-900 num mt-0.5 w-full border-b-2 border-violet-400 focus:outline-none"
+                />
+              ) : (
+                <div className="text-xl font-black text-slate-900 num mt-0.5">{values[it.key] ?? it.default}</div>
+              )}
               <div className="text-[11px] text-slate-400 mt-0.5">{it.n}</div>
             </div>
-            <button className="text-xs text-slate-400 hover:text-slate-700"><Edit3 size={14} /></button>
+            <button
+              onClick={() => setEditingKey(it.key)}
+              className="text-xs text-slate-400 hover:text-slate-700 shrink-0 ml-2"
+            >
+              <Edit3 size={14} />
+            </button>
           </div>
         ))}
       </div>

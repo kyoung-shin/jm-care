@@ -38,6 +38,12 @@ model Branch {
   pendingUsers PendingUser[]
 }
 
+model FranchiseStandard {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model AdmissionSchool {
   id         String                 @id @default(cuid())
   name       String
