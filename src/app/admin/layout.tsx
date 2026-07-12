@@ -10,6 +10,7 @@ const NAV = [
   { href: '/admin/exams', label: '모의고사' },
   { href: '/admin/counselings', label: '상담 기록' },
   { href: '/admin/branches', label: '지점 관리' },
+  { href: '/admin/hq', label: '본사 관리' },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
