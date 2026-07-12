@@ -2,17 +2,28 @@
 import RoleGuard from '@/components/RoleGuard';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   FileText, MessageSquare, Flame, AlertTriangle, Calendar, Activity,
-  Users, Inbox, ChevronRight, AlertCircle,
+  Users, Inbox, ChevronRight,
 } from 'lucide-react';
 import CounselingModal from '@/components/modals/CounselingModal';
 import ReportModal from '@/components/modals/ReportModal';
+import StudentInputModal from '@/components/modals/StudentInputModal';
 import Footer from '@/components/dashboard/Footer';
 import {
   instructorData, statusConfig, actionStatusConfig,
   type CounselingRecord,
 } from '@/lib/dummy-data';
+
+interface RealStudent {
+  id: string;
+  name: string;
+  grade: string;
+  school: string;
+  finalGoalSchool: string | null;
+  overallReadiness: number | null;
+}
 
 export default function InstructorPage() {
   const [reportOpen, setReportOpen] = useState(false);
@@ -21,17 +32,18 @@ export default function InstructorPage() {
     prefill?: null;
   } | null>(null);
   const [actions, setActions] = useState(instructorData.myActions);
+  const [myStudents, setMyStudents] = useState<RealStudent[]>([]);
+  const [inputStudent, setInputStudent] = useState<RealStudent | null>(null);
 
   useEffect(() => {
-    async function loadActions() {
-      try {
-        const res = await fetch('/api/students/student_minjun/counselings');
-        if (res.ok) {
-          // Actions from counselings could be merged here
-        }
-      } catch { /* fall back to dummy */ }
-    }
-    loadActions();
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(async me => {
+        if (!me?.id) return;
+        const data = await fetch(`/api/students?instructorId=${me.id}`).then(r => r.json());
+        if (Array.isArray(data)) setMyStudents(data);
+      })
+      .catch(() => {});
   }, []);
 
   const d = instructorData;
@@ -124,46 +136,35 @@ export default function InstructorPage() {
       <div className="grid grid-cols-12 gap-4 mb-4">
         <div className="col-span-7 bg-white border border-stone-200 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2"><Users size={14} className="text-slate-700" /><div className="serif-ko text-base font-bold text-slate-900">담당 학생 ({d.myStudentsCount}명)</div></div>
-            <div className="flex items-center gap-2 text-[11px]">
-              <span className="text-slate-500">정렬:</span>
-              <button className="text-slate-900 font-semibold">위험도 ↓</button>
-              <span className="text-slate-300">|</span>
-              <button className="text-slate-500 hover:text-slate-900">다음 점검 임박</button>
-            </div>
+            <div className="flex items-center gap-2"><Users size={14} className="text-slate-700" /><div className="serif-ko text-base font-bold text-slate-900">담당 학생 ({myStudents.length}명)</div></div>
           </div>
           <div className="space-y-2">
-            {d.myStudents.map((s, i) => {
-              const cfg = statusConfig[s.status];
-              return (
-                <div key={i} className="border border-stone-200 rounded-lg p-3 hover:border-slate-400 hover:shadow-sm transition-all cursor-pointer flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-full ${cfg.soft} text-white flex items-center justify-center serif-ko font-bold text-sm shrink-0`}>{s.name.charAt(0)}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <div className="font-bold text-slate-900 text-sm">{s.name}</div>
-                      <div className="text-[10px] text-slate-500">{s.grade}</div>
-                      {s.signals > 0 && (
-                        <div className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-bold flex items-center gap-1">
-                          <AlertCircle size={9} /> {s.signals}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-slate-500 mt-0.5 truncate">{s.target}</div>
+            {myStudents.length === 0 && (
+              <div className="text-xs text-slate-400 text-center py-6">담당 학생이 없습니다</div>
+            )}
+            {myStudents.slice(0, 6).map(s => (
+              <button
+                key={s.id}
+                onClick={() => setInputStudent(s)}
+                className="w-full text-left border border-stone-200 rounded-lg p-3 hover:border-slate-400 hover:shadow-sm transition-all cursor-pointer flex items-center gap-3"
+              >
+                <div className="w-9 h-9 rounded-full bg-slate-700 text-white flex items-center justify-center serif-ko font-bold text-sm shrink-0">{s.name.charAt(0)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="font-bold text-slate-900 text-sm">{s.name}</div>
+                    <div className="text-[10px] text-slate-500">{s.grade}</div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <div className="flex items-center gap-2">
-                      <div className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${cfg.text} ${cfg.bg} border ${cfg.border}`}>{cfg.label}</div>
-                      <div className="font-bold num text-slate-900">{s.readiness}<span className="text-[10px] text-slate-500 font-normal">%</span></div>
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-1 num">최근 {s.lastCheck} · 다음 {s.nextCheck}</div>
-                  </div>
-                  <ChevronRight size={14} className="text-slate-400 shrink-0" />
+                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">{s.finalGoalSchool ?? '목표 미설정'}</div>
                 </div>
-              );
-            })}
+                {typeof s.overallReadiness === 'number' && (
+                  <div className="font-bold num text-slate-900 shrink-0">{s.overallReadiness}<span className="text-[10px] text-slate-500 font-normal">%</span></div>
+                )}
+                <ChevronRight size={14} className="text-slate-400 shrink-0" />
+              </button>
+            ))}
           </div>
           <div className="mt-4 pt-3 border-t border-stone-100 text-center">
-            <button className="text-xs text-slate-700 hover:text-slate-900 font-semibold">담당 학생 전체 보기 →</button>
+            <Link href="/students" className="text-xs text-slate-700 hover:text-slate-900 font-semibold">담당 학생 전체 보기 →</Link>
           </div>
         </div>
 
@@ -246,6 +247,13 @@ export default function InstructorPage() {
           onClose={() => setCounselingModal(null)}
           onSave={(record: CounselingRecord) => { setCounselingModal(null); }}
           onToggleAction={() => {}}
+        />
+      )}
+      {inputStudent && (
+        <StudentInputModal
+          studentId={inputStudent.id}
+          studentName={inputStudent.name}
+          onClose={() => setInputStudent(null)}
         />
       )}
     </div>

@@ -93,12 +93,12 @@ model PendingUser {
 }
 
 model Student {
-  id               String        @id @default(cuid())
+  id               String                @id @default(cuid())
   name             String
   initial          String
   grade            String
   school           String
-  enrolledMonths   Int           @default(0)
+  enrolledMonths   Int                   @default(0)
   finalGoalSchool  String?
   finalGoalDetail  String?
   finalGoalTrack   String?
@@ -109,17 +109,35 @@ model Student {
   daysUntilHS      Int?
   overallReadiness Int?
   peerAverage      Int?
+  roadmap          Json?
+  riskSignals      Json?
+  subjectTargets   Json?
   instructorId     String
-  instructor       User          @relation("InstructorStudents", fields: [instructorId], references: [id])
+  instructor       User                  @relation("InstructorStudents", fields: [instructorId], references: [id])
   branchId         String
-  branch           Branch        @relation(fields: [branchId], references: [id])
+  branch           Branch                @relation(fields: [branchId], references: [id])
   mockExams        MockExam[]
   counselings      Counseling[]
   reports          Report[]
   goalHistories    GoalHistory[]
-  loginUser        User?         @relation("StudentLogin")
-  parents          User[]        @relation("StudentParents")
-  createdAt        DateTime      @default(now())
+  statusUpdates    StudentStatusUpdate[]
+  loginUser        User?                 @relation("StudentLogin")
+  parents          User[]                @relation("StudentParents")
+  createdAt        DateTime              @default(now())
+}
+
+model StudentStatusUpdate {
+  id               String   @id @default(cuid())
+  studentId        String
+  student          Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  overallReadiness Int?
+  peerAverage      Int?
+  subjectTargets   Json?
+  roadmap          Json?
+  riskSignals      Json?
+  note             String?
+  createdBy        String?
+  createdAt        DateTime @default(now())
 }
 
 model MockExam {

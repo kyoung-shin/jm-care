@@ -17,6 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         mockExams: { orderBy: { createdAt: 'asc' } },
         counselings: { orderBy: { createdAt: 'desc' } },
         reports: { orderBy: { createdAt: 'desc' } },
+        goalHistories: { orderBy: { createdAt: 'desc' } },
       },
     });
     if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });

@@ -139,20 +139,21 @@ async function main() {
 
   // Other students for instructor view
   const otherStudents = [
-    { id: 'student_seoyeon', name: '이서연', initial: '이', grade: '중2', school: '고양 능곡중', overallReadiness: 61 },
-    { id: 'student_yujin', name: '정유진', initial: '정', grade: '중3', school: '파주 문산중', overallReadiness: 75 },
-    { id: 'student_haneul', name: '윤하늘', initial: '윤', grade: '중3', school: '김포 풍무중', overallReadiness: 78 },
-    { id: 'student_junho', name: '박준호', initial: '박', grade: '중1', school: '파주 야당중', overallReadiness: 81 },
-    { id: 'student_jiwon', name: '최지원', initial: '최', grade: '중3', school: '파주 와동중', overallReadiness: 87 },
+    { id: 'student_seoyeon', name: '이서연', initial: '이', grade: '중2', school: '고양 능곡중', overallReadiness: 61, finalGoalSchool: '고양국제고', finalGoalTrack: null },
+    { id: 'student_yujin', name: '정유진', initial: '정', grade: '중3', school: '파주 문산중', overallReadiness: 75, finalGoalSchool: '연세대학교', finalGoalTrack: '장기 로드맵' },
+    { id: 'student_haneul', name: '윤하늘', initial: '윤', grade: '중3', school: '김포 풍무중', overallReadiness: 78, finalGoalSchool: '김포외고', finalGoalTrack: null },
+    { id: 'student_junho', name: '박준호', initial: '박', grade: '중1', school: '파주 야당중', overallReadiness: 81, finalGoalSchool: '과학고', finalGoalTrack: '탐색 트랙' },
+    { id: 'student_jiwon', name: '최지원', initial: '최', grade: '중3', school: '파주 와동중', overallReadiness: 87, finalGoalSchool: '서울대학교', finalGoalTrack: '장기 로드맵' },
   ];
 
   for (const s of otherStudents) {
     await prisma.student.upsert({
       where: { id: s.id },
-      update: {},
+      update: { overallReadiness: s.overallReadiness, finalGoalSchool: s.finalGoalSchool, finalGoalTrack: s.finalGoalTrack },
       create: {
         id: s.id, name: s.name, initial: s.initial, grade: s.grade, school: s.school,
         enrolledMonths: 6, overallReadiness: s.overallReadiness,
+        finalGoalSchool: s.finalGoalSchool, finalGoalTrack: s.finalGoalTrack,
         instructorId: instructor.id, branchId: branch.id,
       },
     });
