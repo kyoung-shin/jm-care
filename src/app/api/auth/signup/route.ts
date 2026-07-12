@@ -29,6 +29,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
     }
 
+    if (requestedRole === 'DIRECTOR') {
+      const existingDirector = await prisma.user.findFirst({ where: { branchId, role: 'DIRECTOR' } });
+      if (existingDirector) {
+        return NextResponse.json({ error: '이미 원장이 있는 지점입니다' }, { status: 409 });
+      }
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = await prisma.$transaction(async tx => {

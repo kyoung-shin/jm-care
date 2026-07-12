@@ -10,7 +10,7 @@ const ROLES = [
   { value: 'STUDENT', label: '학생', desc: '본인 성적 및 학습 현황 확인' },
 ];
 
-interface Branch { id: string; name: string; }
+interface Branch { id: string; name: string; hasDirector: boolean; }
 
 type UsernameCheckStatus = 'idle' | 'checking' | 'available' | 'taken' | 'error';
 
@@ -55,6 +55,8 @@ export default function SignUpPage() {
   };
 
   const usernameVerified = usernameCheck === 'available' && checkedUsername === form.username;
+
+  const availableBranches = form.requestedRole === 'DIRECTOR' ? branches.filter(b => !b.hasDirector) : branches;
 
   const canSubmit =
     usernameVerified &&
@@ -205,8 +207,14 @@ export default function SignUpPage() {
             className="w-full text-sm border border-stone-300 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
           >
             <option value="">지점을 선택하세요</option>
-            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            {availableBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
+          {form.requestedRole === 'DIRECTOR' && availableBranches.length < branches.length && (
+            <div className="text-xs text-slate-400 mt-1">이미 원장이 있는 지점은 목록에서 제외됩니다</div>
+          )}
+          {form.requestedRole === 'DIRECTOR' && branches.length > 0 && availableBranches.length === 0 && (
+            <div className="text-xs text-red-500 mt-1">모든 지점에 이미 원장이 배정되어 있습니다</div>
+          )}
         </div>
 
         <div>
@@ -216,7 +224,10 @@ export default function SignUpPage() {
               <button
                 key={r.value}
                 type="button"
-                onClick={() => setForm(f => ({ ...f, requestedRole: r.value }))}
+                onClick={() => setForm(f => {
+                  const stillValid = r.value !== 'DIRECTOR' || !branches.find(b => b.id === f.branchId)?.hasDirector;
+                  return { ...f, requestedRole: r.value, branchId: stillValid ? f.branchId : '' };
+                })}
                 className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
                   form.requestedRole === r.value
                     ? 'border-slate-900 bg-slate-50'

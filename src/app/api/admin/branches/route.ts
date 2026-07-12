@@ -27,8 +27,14 @@ export async function POST(req: Request) {
   try {
     const user = await getCurrentAppUser();
     if (user?.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    const { name } = await req.json();
-    const branch = await prisma.branch.create({ data: { name } });
+    const { name, region, status } = await req.json();
+    const branch = await prisma.branch.create({
+      data: {
+        name,
+        region: region || null,
+        ...(status && ['ACTIVE', 'PREPARING', 'CLOSING'].includes(status) ? { status } : {}),
+      },
+    });
     return NextResponse.json(branch, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });

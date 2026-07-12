@@ -158,12 +158,30 @@ async function main() {
     });
   }
 
+  // Admission schools (입시기준 DB)
+  const schools = [
+    { id: 'school_korea_univ', name: '고려대학교 (서울)', dept: '신소재공학부 외 82개 모집단위', year: 2027, typesCount: 4, status: 'VERIFIED', updatedBy: '입시연구팀 김OO', source: '고려대 2027 입학전형시행계획' },
+    { id: 'school_snu', name: '서울대학교', dept: '공과대학 외 76개', year: 2027, typesCount: 3, status: 'VERIFIED', updatedBy: '입시연구팀 김OO', source: '서울대 2027 입학전형시행계획' },
+    { id: 'school_yonsei', name: '연세대학교 (서울)', dept: '공학계열 외', year: 2027, typesCount: 4, status: 'VERIFIED', updatedBy: '입시연구팀 이OO', source: '연세대 2027 입학전형시행계획' },
+    { id: 'school_gbsh', name: '경기북과학고', dept: '자기주도학습전형', year: 2027, typesCount: 1, status: 'DRAFT', updatedBy: '입시연구팀 이OO', source: null },
+    { id: 'school_kaist_gifted', name: 'KAIST 부설 한국과학영재학교', dept: '영재학교 전형', year: 2027, typesCount: 1, status: 'REVIEW', updatedBy: '입시연구팀 박OO', source: null },
+  ] as const;
+
+  for (const s of schools) {
+    await prisma.admissionSchool.upsert({
+      where: { id: s.id },
+      update: {},
+      create: s,
+    });
+  }
+
   console.log('✓ Seed completed successfully');
   console.log(`  Branch: ${branch.name}`);
   console.log(`  Instructors: 박지훈, 김서연`);
   console.log(`  Students: ${otherStudents.length + 1}명`);
   console.log(`  Mock Exams: ${examData.length}회`);
   console.log(`  Counselings: ${counselingData.length}건`);
+  console.log(`  Admission Schools: ${schools.length}개교`);
 }
 
 main()

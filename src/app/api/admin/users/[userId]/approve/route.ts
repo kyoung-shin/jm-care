@@ -17,6 +17,13 @@ export async function POST(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
+    const existingDirector = await prisma.user.findFirst({
+      where: { branchId: pending.branchId, role: 'DIRECTOR', id: { not: userId } },
+    });
+    if (existingDirector) {
+      return NextResponse.json({ error: '이미 해당 지점에 원장이 배정되어 있습니다' }, { status: 409 });
+    }
+
     await prisma.user.update({
       where: { id: userId },
       data: { role: 'DIRECTOR', branchId: pending.branchId, phone: pending.phone },

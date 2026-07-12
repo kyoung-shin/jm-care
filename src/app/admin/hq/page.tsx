@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import {
   Building2, Database, Plus, Search, Upload, Edit3, CheckCircle2, ShieldCheck, School,
 } from 'lucide-react';
+import BranchAccountsModal from '@/components/modals/BranchAccountsModal';
 
 const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white';
 
@@ -37,8 +38,25 @@ function StatCard({ label, value, unit, sub, icon: Icon }: { label: string; valu
 const TABS = ['입시기준 DB', '지점·계정 관리', '프랜차이즈 표준', '전국 통계'] as const;
 type Tab = (typeof TABS)[number];
 
+interface HQStatsData {
+  branchCount: number;
+  activeBranchCount: number;
+  preparingBranchCount: number;
+  instructorCount: number;
+  newInstructorsThisMonth: number;
+  studentCount: number;
+  schoolCount: number;
+  verifiedSchoolCount: number;
+  updatingSchoolCount: number;
+}
+
 export default function AdminHQPage() {
   const [tab, setTab] = useState<Tab>('입시기준 DB');
+  const [stats, setStats] = useState<HQStatsData | null>(null);
+
+  useEffect(() => {
+    fetch('/api/admin/hq-stats').then(r => r.json()).then(d => { if (d && !d.error) setStats(d); }).catch(() => {});
+  }, []);
 
   return (
     <div className="ko-sans max-w-6xl mx-auto px-8 py-8">
@@ -54,10 +72,10 @@ export default function AdminHQPage() {
       </div>
 
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <StatCard label="등록 지점" value="38" unit="개" sub="운영중 36 · 준비중 2" icon={School} />
-        <StatCard label="전체 강사" value="247" unit="명" sub="이번달 신규 12명" icon={Building2} />
-        <StatCard label="전체 재원생" value="9,418" unit="명" sub="전월 대비 +312" icon={Building2} />
-        <StatCard label="입시 DB 학교" value="184" unit="개교" sub="검증완료 171 · 갱신중 13" icon={Database} />
+        <StatCard label="등록 지점" value={String(stats?.branchCount ?? '—')} unit="개" sub={stats ? `운영중 ${stats.activeBranchCount} · 준비중 ${stats.preparingBranchCount}` : undefined} icon={School} />
+        <StatCard label="전체 강사" value={String(stats?.instructorCount ?? '—')} unit="명" sub={stats ? `이번달 신규 ${stats.newInstructorsThisMonth}명` : undefined} icon={Building2} />
+        <StatCard label="전체 재원생" value={stats ? stats.studentCount.toLocaleString() : '—'} unit="명" icon={Building2} />
+        <StatCard label="입시 DB 학교" value={String(stats?.schoolCount ?? '—')} unit="개교" sub={stats ? `검증완료 ${stats.verifiedSchoolCount} · 갱신중 ${stats.updatingSchoolCount}` : undefined} icon={Database} />
       </div>
 
       <div className="flex gap-1 mb-5 border-b border-stone-200">
@@ -82,19 +100,34 @@ export default function AdminHQPage() {
   );
 }
 
+interface AdmissionSchoolRow {
+  id: string;
+  name: string;
+  dept: string | null;
+  year: number;
+  typesCount: number;
+  status: 'VERIFIED' | 'REVIEW' | 'DRAFT';
+  updatedBy: string | null;
+  updatedAt: string;
+}
+
+const statusCfg: Record<string, { label: string; cls: string }> = {
+  VERIFIED: { label: '검증완료', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  REVIEW: { label: '검토중', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  DRAFT: { label: '초안', cls: 'bg-slate-100 text-slate-600 border-slate-200' },
+};
+
 function AdmissionDB() {
-  const schools = [
-    { name: '고려대학교 (서울)', dept: '신소재공학부 외 82개 모집단위', year: 2027, types: 4, status: 'verified', updated: '2026.06.10', by: '입시연구팀 김OO' },
-    { name: '서울대학교', dept: '공과대학 외 76개', year: 2027, types: 3, status: 'verified', updated: '2026.06.08', by: '입시연구팀 김OO' },
-    { name: '연세대학교 (서울)', dept: '공학계열 외', year: 2027, types: 4, status: 'verified', updated: '2026.06.05', by: '입시연구팀 이OO' },
-    { name: '경기북과학고', dept: '자기주도학습전형', year: 2027, types: 1, status: 'draft', updated: '2026.05.20', by: '입시연구팀 이OO' },
-    { name: 'KAIST 부설 한국과학영재학교', dept: '영재학교 전형', year: 2027, types: 1, status: 'review', updated: '2026.05.18', by: '입시연구팀 박OO' },
-  ];
-  const statusCfg: Record<string, { label: string; cls: string }> = {
-    verified: { label: '검증완료', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-    review: { label: '검토중', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-    draft: { label: '초안', cls: 'bg-slate-100 text-slate-600 border-slate-200' },
-  };
+  const [schools, setSchools] = useState<AdmissionSchoolRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/admin/admission-schools').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setSchools(d);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
   return (
     <div className="space-y-4">
       <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 flex items-start gap-3">
@@ -132,22 +165,25 @@ function AdmissionDB() {
             </tr>
           </thead>
           <tbody>
-            {schools.map((s, i) => {
+            {!loading && schools.length === 0 && (
+              <tr><td colSpan={6} className="px-5 py-6 text-center text-slate-400 text-sm">등록된 학교가 없습니다</td></tr>
+            )}
+            {schools.map(s => {
               const sc = statusCfg[s.status];
               return (
-                <tr key={i} className="border-t border-stone-100 hover:bg-stone-50/50">
+                <tr key={s.id} className="border-t border-stone-100 hover:bg-stone-50/50">
                   <td className="px-5 py-3">
                     <div className="font-semibold text-slate-900">{s.name}</div>
                     <div className="text-[11px] text-slate-500">{s.dept}</div>
                   </td>
                   <td className="px-3 py-3 text-center num text-slate-700">{s.year}</td>
-                  <td className="px-3 py-3 text-center num text-slate-700">{s.types}</td>
+                  <td className="px-3 py-3 text-center num text-slate-700">{s.typesCount}</td>
                   <td className="px-3 py-3 text-center">
                     <span className={`text-[10px] px-2 py-1 rounded-full border font-semibold ${sc.cls}`}>{sc.label}</span>
                   </td>
                   <td className="px-3 py-3">
-                    <div className="text-[11px] text-slate-700 num">{s.updated}</div>
-                    <div className="text-[10px] text-slate-400">{s.by}</div>
+                    <div className="text-[11px] text-slate-700 num">{new Date(s.updatedAt).toLocaleDateString('ko-KR')}</div>
+                    <div className="text-[10px] text-slate-400">{s.updatedBy}</div>
                   </td>
                   <td className="px-3 py-3 text-right">
                     <button className="text-xs text-slate-500 hover:text-slate-900 font-semibold flex items-center gap-0.5 ml-auto">
@@ -207,9 +243,20 @@ function AdmissionDB() {
   );
 }
 
+type BranchStatus = 'ACTIVE' | 'PREPARING' | 'CLOSING';
+
+const BRANCH_STATUS_LABELS: Record<BranchStatus, string> = { ACTIVE: '운영중', PREPARING: '준비중', CLOSING: '정리중' };
+const BRANCH_STATUS_CLS: Record<BranchStatus, string> = {
+  ACTIVE: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  PREPARING: 'bg-amber-50 text-amber-700 border-amber-200',
+  CLOSING: 'bg-red-50 text-red-700 border-red-200',
+};
+
 interface BranchRow {
   id: string;
   name: string;
+  region: string | null;
+  status: BranchStatus;
   directorName: string | null;
   instructorCount: number;
   _count: { users: number; students: number };
@@ -235,6 +282,7 @@ function BranchAccounts() {
   const [branches, setBranches] = useState<BranchRow[]>([]);
   const [pending, setPending] = useState<PendingSignup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accountsModalBranch, setAccountsModalBranch] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -255,21 +303,36 @@ function BranchAccounts() {
           <thead className="bg-stone-50 text-[11px] text-slate-500">
             <tr>
               <th className="px-5 py-2.5 text-left font-semibold">지점</th>
+              <th className="px-3 py-2.5 text-left font-semibold">지역</th>
               <th className="px-3 py-2.5 text-left font-semibold">원장</th>
               <th className="px-3 py-2.5 text-center font-semibold">강사</th>
               <th className="px-3 py-2.5 text-center font-semibold">재원생</th>
+              <th className="px-3 py-2.5 text-center font-semibold">상태</th>
+              <th className="px-3 py-2.5"></th>
             </tr>
           </thead>
           <tbody>
             {!loading && branches.length === 0 && (
-              <tr><td colSpan={4} className="px-5 py-6 text-center text-slate-400 text-sm">등록된 지점이 없습니다</td></tr>
+              <tr><td colSpan={7} className="px-5 py-6 text-center text-slate-400 text-sm">등록된 지점이 없습니다</td></tr>
             )}
             {branches.map(b => (
               <tr key={b.id} className="border-t border-stone-100 hover:bg-stone-50/50">
                 <td className="px-5 py-3 font-semibold text-slate-900">{b.name}</td>
+                <td className="px-3 py-3 text-slate-600 text-xs">{b.region ?? '—'}</td>
                 <td className="px-3 py-3 text-slate-700">{b.directorName ?? '— (미배정)'}</td>
                 <td className="px-3 py-3 text-center num">{b.instructorCount}</td>
                 <td className="px-3 py-3 text-center num">{b._count.students}</td>
+                <td className="px-3 py-3 text-center">
+                  <span className={`text-[10px] px-2 py-1 rounded-full border font-semibold ${BRANCH_STATUS_CLS[b.status]}`}>{BRANCH_STATUS_LABELS[b.status]}</span>
+                </td>
+                <td className="px-3 py-3 text-right">
+                  <button
+                    onClick={() => setAccountsModalBranch({ id: b.id, name: b.name })}
+                    className="text-xs text-slate-500 hover:text-slate-900 font-semibold"
+                  >
+                    계정관리 →
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -316,6 +379,14 @@ function BranchAccounts() {
           </tbody>
         </table>
       </div>
+
+      {accountsModalBranch && (
+        <BranchAccountsModal
+          branchId={accountsModalBranch.id}
+          branchName={accountsModalBranch.name}
+          onClose={() => setAccountsModalBranch(null)}
+        />
+      )}
     </div>
   );
 }
