@@ -4,12 +4,13 @@ import LogoutButton from '@/components/LogoutButton';
 import { getCurrentAppUser } from '@/lib/auth';
 
 const NAV = [
-  { href: '/admin', label: '대시보드' },
-  { href: '/admin/students', label: '학생 관리' },
-  { href: '/admin/users', label: '회원 관리' },
-  { href: '/admin/exams', label: '모의고사' },
-  { href: '/admin/counselings', label: '상담 기록' },
-  { href: '/admin/branches', label: '지점 관리' },
+  // 본사 관리 탭만 노출 (다른 탭은 추후 필요 시 아래 주석을 해제해 복원)
+  // { href: '/admin', label: '대시보드' },
+  // { href: '/admin/students', label: '학생 관리' },
+  // { href: '/admin/users', label: '회원 관리' },
+  // { href: '/admin/exams', label: '모의고사' },
+  // { href: '/admin/counselings', label: '상담 기록' },
+  // { href: '/admin/branches', label: '지점 관리' },
   { href: '/admin/hq', label: '본사 관리' },
 ];
 

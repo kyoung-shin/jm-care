@@ -6,7 +6,7 @@ export default async function RootPage() {
   if (!user) redirect('/sign-in');
 
   const role = user.role;
-  if (role === 'ADMIN') redirect('/admin');
+  if (role === 'ADMIN') redirect('/admin/hq');
   if (role === 'DIRECTOR') redirect('/director');
   if (role === 'INSTRUCTOR') redirect('/instructor');
   if (role === 'PARENT') redirect('/parent');
