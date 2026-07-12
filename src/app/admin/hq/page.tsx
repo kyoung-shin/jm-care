@@ -267,6 +267,7 @@ interface BranchRow {
 
 interface PendingSignup {
   id: string;
+  userId: string;
   name: string;
   phone?: string | null;
   email?: string | null;
@@ -287,6 +288,7 @@ function BranchAccounts() {
   const [loading, setLoading] = useState(true);
   const [accountsModalBranch, setAccountsModalBranch] = useState<{ id: string; name: string } | null>(null);
   const [branchModal, setBranchModal] = useState<'add' | 'delete' | null>(null);
+  const [actingOn, setActingOn] = useState<Record<string, boolean>>({});
 
   const load = () => {
     Promise.all([
@@ -300,6 +302,20 @@ function BranchAccounts() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const decide = async (p: PendingSignup, action: 'approve' | 'reject') => {
+    setActingOn(a => ({ ...a, [p.id]: true }));
+    try {
+      const res = await fetch(`/api/admin/users/${p.userId}/${action}`, { method: 'POST' });
+      if (res.ok) {
+        load();
+      } else {
+        setActingOn(a => ({ ...a, [p.id]: false }));
+      }
+    } catch {
+      setActingOn(a => ({ ...a, [p.id]: false }));
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -376,28 +392,55 @@ function BranchAccounts() {
               <th className="px-3 py-2.5 text-left font-semibold">지점</th>
               <th className="px-3 py-2.5 text-left font-semibold">사유</th>
               <th className="px-3 py-2.5 text-left font-semibold">신청일</th>
+              <th className="px-3 py-2.5 text-right font-semibold">처리</th>
             </tr>
           </thead>
           <tbody>
             {!loading && pending.length === 0 && (
-              <tr><td colSpan={8} className="px-5 py-6 text-center text-slate-400 text-sm">대기 중인 가입 신청이 없습니다</td></tr>
+              <tr><td colSpan={9} className="px-5 py-6 text-center text-slate-400 text-sm">대기 중인 가입 신청이 없습니다</td></tr>
             )}
-            {pending.map(p => (
-              <tr key={p.id} className="border-t border-stone-100 hover:bg-stone-50/50">
-                <td className="px-5 py-3 font-semibold text-slate-900 whitespace-nowrap">{p.user?.username ?? '—'}</td>
-                <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{p.name}</td>
-                <td className="px-3 py-3 text-slate-600 text-xs whitespace-nowrap">{p.phone || '—'}</td>
-                <td className="px-3 py-3 text-slate-600 text-xs whitespace-nowrap">{p.email || '—'}</td>
-                <td className="px-3 py-3 text-center whitespace-nowrap">
-                  <span className="text-[10px] px-2 py-1 rounded-full border font-semibold bg-violet-50 text-violet-700 border-violet-200">
-                    {REQUESTED_ROLE_LABELS[p.requestedRole] ?? p.requestedRole}
-                  </span>
-                </td>
-                <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{p.branch?.name ?? '—'}</td>
-                <td className="px-3 py-3 text-slate-600 text-xs">{p.reason || '—'}</td>
-                <td className="px-3 py-3 text-slate-500 text-xs num whitespace-nowrap">{new Date(p.createdAt).toLocaleDateString('ko-KR')}</td>
-              </tr>
-            ))}
+            {pending.map(p => {
+              const isDirector = p.requestedRole === 'DIRECTOR';
+              const busy = !!actingOn[p.id];
+              return (
+                <tr key={p.id} className="border-t border-stone-100 hover:bg-stone-50/50">
+                  <td className="px-5 py-3 font-semibold text-slate-900 whitespace-nowrap">{p.user?.username ?? '—'}</td>
+                  <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{p.name}</td>
+                  <td className="px-3 py-3 text-slate-600 text-xs whitespace-nowrap">{p.phone || '—'}</td>
+                  <td className="px-3 py-3 text-slate-600 text-xs whitespace-nowrap">{p.email || '—'}</td>
+                  <td className="px-3 py-3 text-center whitespace-nowrap">
+                    <span className="text-[10px] px-2 py-1 rounded-full border font-semibold bg-violet-50 text-violet-700 border-violet-200">
+                      {REQUESTED_ROLE_LABELS[p.requestedRole] ?? p.requestedRole}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{p.branch?.name ?? '—'}</td>
+                  <td className="px-3 py-3 text-slate-600 text-xs">{p.reason || '—'}</td>
+                  <td className="px-3 py-3 text-slate-500 text-xs num whitespace-nowrap">{new Date(p.createdAt).toLocaleDateString('ko-KR')}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap">
+                    {isDirector ? (
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <button
+                          onClick={() => decide(p, 'approve')}
+                          disabled={busy}
+                          className="px-2.5 py-1 bg-emerald-600 text-white rounded-md text-[11px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          승인
+                        </button>
+                        <button
+                          onClick={() => decide(p, 'reject')}
+                          disabled={busy}
+                          className="px-2.5 py-1 border border-stone-300 rounded-md text-[11px] text-slate-600 hover:bg-stone-100 disabled:opacity-50"
+                        >
+                          거부
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">해당 지점 원장 승인 필요</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
