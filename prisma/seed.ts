@@ -159,6 +159,71 @@ async function main() {
     });
   }
 
+  // Risk signals for instructor dashboard alerts
+  await prisma.student.update({
+    where: { id: 'student_seoyeon' },
+    data: {
+      riskSignals: [
+        { label: '출결+참여 신호', value: '주의', detail: '최근 4주 결석 3회, 과제 수행률 48% (직전 분기 80%)', tone: 'critical' },
+      ],
+    },
+  });
+  await prisma.student.update({
+    where: { id: 'student_minjun' },
+    data: {
+      riskSignals: [
+        { label: '학습 신호', value: '주의', detail: '국어 백분위, 합격생 평균 경로 대비 갭 -6 지속', tone: 'risk' },
+      ],
+    },
+  });
+
+  // Instructor action items (담당 액션) — deadlines relative to seed run date
+  const fmtDate = (d: Date) => `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  const addDays = (base: Date, n: number) => { const d = new Date(base); d.setDate(d.getDate() + n); return d; };
+  const seedToday = new Date();
+  seedToday.setHours(0, 0, 0, 0);
+
+  const actionRows = [
+    { id: 'action_seoyeon_1', studentId: 'student_seoyeon', offset: -2, name: '결석 사유 1:1 면담', status: 'overdue' },
+    { id: 'action_junho_1', studentId: 'student_junho', offset: 2, name: '학부모 진로 상담 진행', status: 'urgent' },
+    { id: 'action_minjun_math_check', studentId: 'student_minjun', offset: 3, name: '수학 고1 선행 월간 점검', status: 'in-progress' },
+    { id: 'action_yujin_1', studentId: 'student_yujin', offset: 6, name: '장기 로드맵 중간 리뷰', status: 'in-progress' },
+    { id: 'action_minjun_korean_class', studentId: 'student_minjun', offset: 19, name: '국어 독해 기초반 (주 2회 진행 중)', status: 'in-progress' },
+  ];
+  for (const a of actionRows) {
+    const deadline = fmtDate(addDays(seedToday, a.offset));
+    await prisma.counseling.upsert({
+      where: { id: a.id },
+      update: {},
+      create: {
+        id: a.id, studentId: a.studentId, date: fmtDate(seedToday), type: '정기상담', topic: '학습',
+        summary: `${a.name} 관련 상담`, internalMemo: '', parentShare: '',
+        actionName: a.name, actionOwner: instructor.name, actionDeadline: deadline, actionStatus: a.status,
+      },
+    });
+  }
+
+  // This week's schedule (이번 주 일정) — today + next 4 days
+  const dayKr = ['일', '월', '화', '수', '목', '금', '토'];
+  const scheduleDays = [
+    { offset: 0, items: [{ time: '17:00', type: '수업', label: '중2 심화 수학', urgent: false }, { time: '19:30', type: '보충', label: '김민준 국어 독해', urgent: false }] },
+    { offset: 1, items: [{ time: '16:00', type: '면담', label: '이서연 1:1 (지연중)', urgent: true }, { time: '19:00', type: '수업', label: '중2 심화 과학', urgent: false }] },
+    { offset: 2, items: [{ time: '14:00', type: '상담', label: '박준호 학부모', urgent: false }, { time: '17:00', type: '수업', label: '중1 통합', urgent: false }] },
+    { offset: 3, items: [{ time: '18:00', type: '점검', label: '김민준 수학 월간', urgent: false }] },
+    { offset: 4, items: [{ time: '15:00', type: '학평', label: '전국 학력평가 (5차)', urgent: false }] },
+  ];
+  await prisma.scheduleEvent.deleteMany({ where: { instructorId: instructor.id } });
+  for (const day of scheduleDays) {
+    const d = addDays(seedToday, day.offset);
+    const dateStr = `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+    const dayStr = dayKr[d.getDay()];
+    for (const item of day.items) {
+      await prisma.scheduleEvent.create({
+        data: { instructorId: instructor.id, date: dateStr, day: dayStr, time: item.time, type: item.type, label: item.label, urgent: item.urgent },
+      });
+    }
+  }
+
   // Admission schools (입시기준 DB)
   const schools = [
     { id: 'school_korea_univ', name: '고려대학교 (서울)', dept: '신소재공학부 외 82개 모집단위', year: 2027, typesCount: 4, status: 'VERIFIED', updatedBy: '입시연구팀 김OO', source: '고려대 2027 입학전형시행계획' },

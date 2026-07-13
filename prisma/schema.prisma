@@ -73,6 +73,20 @@ model User {
   children         Student[]    @relation("StudentParents")
   createdAt        DateTime     @default(now())
   pendingUser      PendingUser?
+  scheduleEvents   ScheduleEvent[]
+}
+
+model ScheduleEvent {
+  id           String   @id @default(cuid())
+  instructorId String
+  instructor   User     @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  date         String
+  day          String
+  time         String
+  type         String
+  label        String
+  urgent       Boolean  @default(false)
+  createdAt    DateTime @default(now())
 }
 
 model PendingUser {
