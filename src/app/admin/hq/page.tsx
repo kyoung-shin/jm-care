@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import {
-  Building2, Database, Plus, Search, Upload, Edit3, CheckCircle2, ShieldCheck, School,
+  Building2, Database, Plus, Search, Edit3, CheckCircle2, ShieldCheck, School,
 } from 'lucide-react';
 import BranchAccountsModal from '@/components/modals/BranchAccountsModal';
 import AddBranchModal from '@/components/modals/AddBranchModal';
 import DeleteBranchModal from '@/components/modals/DeleteBranchModal';
+import AddSchoolModal from '@/components/modals/AddSchoolModal';
 import { registerBeforeLeaveSave } from '@/lib/beforeLeave';
 
 const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white';
@@ -120,40 +121,51 @@ const statusCfg: Record<string, { label: string; cls: string }> = {
   DRAFT: { label: '초안', cls: 'bg-slate-100 text-slate-600 border-slate-200' },
 };
 
+const currentAdmissionYear = new Date().getFullYear() + 1;
+
 function AdmissionDB() {
   const [schools, setSchools] = useState<AdmissionSchoolRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     fetch('/api/admin/admission-schools').then(r => r.json()).then(d => {
       if (Array.isArray(d)) setSchools(d);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const q = query.trim().toLowerCase();
+  const filteredSchools = q
+    ? schools.filter(s => s.name.toLowerCase().includes(q) || (s.dept ?? '').toLowerCase().includes(q))
+    : schools;
 
   return (
     <div className="space-y-4">
+      {showAddModal && (
+        <AddSchoolModal defaultYear={currentAdmissionYear} onClose={() => setShowAddModal(false)} onCreated={load} />
+      )}
       <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 flex items-start gap-3">
         <Database size={18} className="text-violet-600 mt-0.5 shrink-0" />
         <div className="text-xs text-violet-900 leading-relaxed flex-1">
           <span className="font-bold">연 1회 갱신 원칙.</span> 대학 전형계획 발표(4~6월) 시 입시연구팀이 PDF 원문과 대조 검증 후 등록합니다. AI는 초안 추출에만 1회성으로 사용하며, 검증완료(verified) 전까지는 학생 대시보드에 반영되지 않습니다.
         </div>
-        <button className="px-3 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shrink-0 hover:bg-violet-700">
+        <button onClick={() => setShowAddModal(true)} className="px-3 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shrink-0 hover:bg-violet-700">
           <Plus size={13} /> 학교 추가
         </button>
       </div>
 
       <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200 bg-stone-50">
-          <div className="text-sm font-bold text-slate-900">2027학년도 입시 기준 마스터</div>
+          <div className="text-sm font-bold text-slate-900">{currentAdmissionYear}학년도 입시 기준 마스터</div>
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input className="text-xs border border-stone-300 rounded-lg pl-8 pr-3 py-1.5 w-44" placeholder="학교 검색" />
+              <input value={query} onChange={e => setQuery(e.target.value)} className="text-xs border border-stone-300 rounded-lg pl-8 pr-3 py-1.5 w-44" placeholder="학교 검색" />
             </div>
-            <button className="text-xs px-2.5 py-1.5 border border-stone-300 rounded-lg flex items-center gap-1 hover:bg-stone-50">
-              <Upload size={12} /> PDF 일괄 등록
-            </button>
           </div>
         </div>
         <table className="w-full text-sm">
@@ -168,10 +180,10 @@ function AdmissionDB() {
             </tr>
           </thead>
           <tbody>
-            {!loading && schools.length === 0 && (
-              <tr><td colSpan={6} className="px-5 py-6 text-center text-slate-400 text-sm">등록된 학교가 없습니다</td></tr>
+            {!loading && filteredSchools.length === 0 && (
+              <tr><td colSpan={6} className="px-5 py-6 text-center text-slate-400 text-sm">{q ? '검색 결과가 없습니다' : '등록된 학교가 없습니다'}</td></tr>
             )}
-            {schools.map(s => {
+            {filteredSchools.map(s => {
               const sc = statusCfg[s.status];
               return (
                 <tr key={s.id} className="border-t border-stone-100 hover:bg-stone-50/50">
