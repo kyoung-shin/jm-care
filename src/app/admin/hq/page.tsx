@@ -686,25 +686,54 @@ function FranchiseStandards() {
   );
 }
 
+interface NationwideStatsData {
+  branchReadiness: { branchId: string; branchName: string; avgReadiness: number | null; studentCount: number }[];
+  enrollmentStability: {
+    avgEnrolledMonths: number;
+    totalStudents: number;
+    retainedCount: number;
+    retention12moRate: number;
+    atRiskCount: number;
+    atRiskRate: number;
+    reportsSent: number;
+    reportsTotal: number;
+    reportViewTrackingAvailable: boolean;
+  };
+}
+
 function NationwideStats() {
+  const [data, setData] = useState<NationwideStatsData | null>(null);
+
+  useEffect(() => {
+    fetch('/api/admin/nationwide-stats').then(r => r.json()).then(d => { if (d && !d.error) setData(d); }).catch(() => {});
+  }, []);
+
+  const es = data?.enrollmentStability;
+
   return (
     <div className="grid grid-cols-2 gap-4">
       <div className="bg-white border border-stone-200 rounded-xl p-5">
         <div className="serif-ko text-base font-bold text-slate-900 mb-4">지점별 평균 준비도</div>
-        {([['분당점', 81], ['일산점', 76], ['대전둔산점', 74], ['운정점', 71]] as [string, number][]).map(([n, v], i) => (
-          <div key={i} className="mb-3">
-            <div className="flex justify-between text-xs mb-1"><span className="text-slate-700">{n}</span><span className="num font-bold">{v}%</span></div>
-            <div className="h-2 bg-stone-100 rounded-full overflow-hidden"><div className="h-full bg-violet-500 rounded-full" style={{ width: `${v}%` }}></div></div>
+        {data && data.branchReadiness.length === 0 && (
+          <div className="text-sm text-slate-400 py-4 text-center">준비도가 입력된 학생이 없습니다</div>
+        )}
+        {(data?.branchReadiness ?? []).map(b => (
+          <div key={b.branchId} className="mb-3">
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-slate-700">{b.branchName}</span>
+              <span className="num font-bold">{b.avgReadiness}% <span className="text-slate-400 font-normal">({b.studentCount}명)</span></span>
+            </div>
+            <div className="h-2 bg-stone-100 rounded-full overflow-hidden"><div className="h-full bg-violet-500 rounded-full" style={{ width: `${b.avgReadiness ?? 0}%` }}></div></div>
           </div>
         ))}
       </div>
       <div className="bg-white border border-stone-200 rounded-xl p-5">
         <div className="serif-ko text-base font-bold text-slate-900 mb-4">전사 재원 안정성</div>
         <div className="grid grid-cols-2 gap-3">
-          <StatCard label="평균 재원기간" value="19.4" unit="개월" sub="전년 17.1개월" />
-          <StatCard label="12개월 잔존율" value="84" unit="%" sub="전년 79%" />
-          <StatCard label="이탈 위험군" value="218" unit="명" sub="전체의 2.3%" />
-          <StatCard label="리포트 열람률" value="87" unit="%" sub="발송 대비" />
+          <StatCard label="평균 재원기간" value={es ? String(es.avgEnrolledMonths) : '—'} unit="개월" sub={es ? `전체 ${es.totalStudents}명 기준` : undefined} />
+          <StatCard label="12개월 잔존율" value={es ? String(es.retention12moRate) : '—'} unit="%" sub={es ? `${es.retainedCount}명 / 전체 ${es.totalStudents}명` : undefined} />
+          <StatCard label="이탈 위험군" value={es ? String(es.atRiskCount) : '—'} unit="명" sub={es ? `전체의 ${es.atRiskRate}%` : undefined} />
+          <StatCard label="리포트 열람률" value="—" unit="" sub={es ? `발송 ${es.reportsSent}건 · 열람 추적 미구현` : undefined} />
         </div>
       </div>
     </div>

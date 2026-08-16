@@ -33,6 +33,7 @@ export default function StudentInputModal({ studentId, studentName, onClose, onS
   // 준비도
   const [overallReadiness, setOverallReadiness] = useState('');
   const [peerAverage, setPeerAverage] = useState('');
+  const [enrolledMonths, setEnrolledMonths] = useState('');
 
   // 과목별 목표점수
   const [targets, setTargets] = useState<Record<string, string>>({});
@@ -116,6 +117,7 @@ export default function StudentInputModal({ studentId, studentName, onClose, onS
       const statusPayload: Record<string, unknown> = {};
       if (overallReadiness.trim()) statusPayload.overallReadiness = Number(overallReadiness);
       if (peerAverage.trim()) statusPayload.peerAverage = Number(peerAverage);
+      if (enrolledMonths.trim()) statusPayload.enrolledMonths = Number(enrolledMonths);
       if (Object.keys(subjectTargets).length > 0) statusPayload.subjectTargets = subjectTargets;
       if (roadmap) statusPayload.roadmap = roadmap;
       if (riskSignals.length > 0) statusPayload.riskSignals = riskSignals;
@@ -173,6 +175,7 @@ export default function StudentInputModal({ studentId, studentName, onClose, onS
               <div className="grid grid-cols-2 gap-3">
                 <input className={inputCls} type="number" placeholder="전체 준비도 (%)" value={overallReadiness} onChange={e => setOverallReadiness(e.target.value)} />
                 <input className={inputCls} type="number" placeholder="합격생 평균 경로 (%)" value={peerAverage} onChange={e => setPeerAverage(e.target.value)} />
+                <input className={inputCls} type="number" placeholder="재원 개월수" value={enrolledMonths} onChange={e => setEnrolledMonths(e.target.value)} />
               </div>
             </section>
 

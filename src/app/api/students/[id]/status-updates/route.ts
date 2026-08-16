@@ -30,7 +30,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const { overallReadiness, peerAverage, subjectTargets, roadmap, riskSignals, note } = await req.json();
+    const { overallReadiness, peerAverage, subjectTargets, roadmap, riskSignals, enrolledMonths, note } = await req.json();
 
     const entry: Prisma.StudentStatusUpdateCreateInput = {
       student: { connect: { id } },
@@ -43,6 +43,7 @@ export async function POST(
     if (subjectTargets !== undefined) { entry.subjectTargets = subjectTargets; mirror.subjectTargets = subjectTargets; }
     if (roadmap !== undefined) { entry.roadmap = roadmap; mirror.roadmap = roadmap; }
     if (riskSignals !== undefined) { entry.riskSignals = riskSignals; mirror.riskSignals = riskSignals; }
+    if (typeof enrolledMonths === 'number' && Number.isInteger(enrolledMonths)) { mirror.enrolledMonths = enrolledMonths; }
     if (typeof note === 'string') { entry.note = note; }
 
     const [update] = await prisma.$transaction([
