@@ -1,7 +1,7 @@
 'use client';
 import RoleGuard from '@/components/RoleGuard';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Award, UserCheck, TrendingUp, Heart, ShieldCheck,
   Calendar, MessageSquare, FileText, Phone, ChevronRight, Eye,
@@ -11,9 +11,26 @@ import ReportModal from '@/components/modals/ReportModal';
 import Footer from '@/components/dashboard/Footer';
 import { parentData, mockExams, statusConfig } from '@/lib/dummy-data';
 
+interface RealReport { id: string; period: string; sentAt: string | null; viewedAt: string | null; }
+
 export default function ParentPage() {
   const [reportOpen, setReportOpen] = useState(false);
+  const [openReportId, setOpenReportId] = useState<string | null>(null);
+  const [childId, setChildId] = useState<string | null>(null);
+  const [reports, setReports] = useState<RealReport[] | null>(null);
   const d = parentData;
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(async me => {
+      if (!me?.id) { setReports([]); return; }
+      const children = await fetch(`/api/students?parentId=${me.id}`).then(r => r.json());
+      const first = Array.isArray(children) ? children[0] : null;
+      if (!first) { setReports([]); return; }
+      setChildId(first.id);
+      const list = await fetch(`/api/students/${first.id}/reports`).then(r => r.json());
+      setReports(Array.isArray(list) ? list.filter((r: RealReport) => r.sentAt) : []);
+    }).catch(() => setReports([]));
+  }, []);
 
   return (
     <RoleGuard allowed={['PARENT', 'DIRECTOR']}>
@@ -205,13 +222,24 @@ export default function ParentPage() {
               <div className="flex items-center gap-2"><FileText size={14} className="text-slate-700" /><div className="serif-ko text-lg font-bold text-slate-900">월간 리포트</div></div>
             </div>
             <div className="space-y-2">
-              {d.reports.map((r, i) => (
-                <div key={i} onClick={() => setReportOpen(true)} className="flex items-center justify-between p-3 border border-stone-200 rounded-lg hover:bg-stone-50 hover:border-slate-400 cursor-pointer transition-all">
+              {reports === null && <div className="text-xs text-slate-400 text-center py-6">불러오는 중...</div>}
+              {reports !== null && reports.length === 0 && (
+                <div className="text-xs text-slate-400 text-center py-6">발송된 리포트가 없습니다</div>
+              )}
+              {(reports ?? []).map(r => (
+                <div
+                  key={r.id}
+                  onClick={() => { setOpenReportId(r.id); setReportOpen(true); }}
+                  className="flex items-center justify-between p-3 border border-stone-200 rounded-lg hover:bg-stone-50 hover:border-slate-400 cursor-pointer transition-all"
+                >
                   <div className="flex items-center gap-3">
                     <FileText size={16} className="text-slate-400" />
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">{r.month} 학습 리포트</div>
-                      <div className="text-[11px] text-slate-500 num">발송 {r.date}</div>
+                      <div className="text-sm font-semibold text-slate-900">{r.period} 학습 리포트</div>
+                      <div className="text-[11px] text-slate-500 num">
+                        발송 {r.sentAt ? new Date(r.sentAt).toLocaleDateString('ko-KR') : '—'}
+                        {r.viewedAt && ' · 열람됨'}
+                      </div>
                     </div>
                   </div>
                   <button className="text-xs text-slate-700 hover:text-slate-900 font-semibold flex items-center gap-1"><Eye size={12} /> 열기</button>
@@ -248,7 +276,14 @@ export default function ParentPage() {
         <Footer perspective="학부모" extra="자녀 정보만 노출되며 내부 운영 메모는 표시되지 않습니다 · 학부모용 화면" />
       </div>
 
-      {reportOpen && <ReportModal mode="parent" onClose={() => setReportOpen(false)} />}
+      {reportOpen && (
+        <ReportModal
+          mode="parent"
+          studentId={childId ?? undefined}
+          reportId={openReportId ?? undefined}
+          onClose={() => { setReportOpen(false); setOpenReportId(null); }}
+        />
+      )}
     </div>
     </RoleGuard>
   );

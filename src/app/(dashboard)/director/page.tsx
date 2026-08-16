@@ -456,7 +456,14 @@ function DirectorPage() {
 
       <Footer perspective="원장" />
 
-      {reportOpen && <ReportModal mode="director" onClose={() => setReportOpen(false)} />}
+      {reportOpen && (
+        <ReportModal
+          mode="director"
+          studentId={studentId ?? undefined}
+          studentName={student?.name}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
       {counselingModal && (
         <CounselingModal
           mode={counselingModal.mode}

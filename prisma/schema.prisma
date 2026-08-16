@@ -228,5 +228,6 @@ model Report {
   period    String
   message   String?
   sentAt    DateTime?
+  viewedAt  DateTime?
   createdAt DateTime  @default(now())
 }

@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
       where: {
         ...(instructorId ? { instructorId } : {}),
         ...(branchId ? { branchId } : {}),
+        ...(parentId ? { parents: { some: { id: parentId } } } : {}),
       },
       include: {
         instructor: { select: { id: true, name: true } },

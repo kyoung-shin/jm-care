@@ -9,11 +9,12 @@ export async function GET() {
     const user = await getCurrentAppUser();
     if (user?.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const [branches, students, reportsSent, reportsTotal] = await Promise.all([
+    const [branches, students, reportsSent, reportsTotal, reportsViewed] = await Promise.all([
       prisma.branch.findMany({ select: { id: true, name: true } }),
       prisma.student.findMany({ select: { branchId: true, enrolledMonths: true, riskSignals: true, overallReadiness: true } }),
       prisma.report.count({ where: { sentAt: { not: null } } }),
       prisma.report.count(),
+      prisma.report.count({ where: { sentAt: { not: null }, viewedAt: { not: null } } }),
     ]);
 
     // 지점별 평균 준비도: AVG(Student.overallReadiness) GROUP BY branchId
@@ -53,6 +54,9 @@ export async function GET() {
     ).length;
     const atRiskRate = totalStudents > 0 ? +((atRiskCount / totalStudents) * 100).toFixed(1) : 0;
 
+    // 리포트 열람률: 열람된 발송 리포트 수 / 발송된 리포트 수
+    const reportViewRate = reportsSent > 0 ? Math.round((reportsViewed / reportsSent) * 100) : null;
+
     return NextResponse.json({
       branchReadiness,
       enrollmentStability: {
@@ -64,7 +68,8 @@ export async function GET() {
         atRiskRate,
         reportsSent,
         reportsTotal,
-        reportViewTrackingAvailable: false,
+        reportsViewed,
+        reportViewRate,
       },
     });
   } catch (e) {

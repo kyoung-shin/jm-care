@@ -308,7 +308,14 @@ function InstructorPage() {
 
       <Footer perspective="강사" extra="강사 본인이 담당하는 학생/액션/일정만 노출됩니다 · 권한 분리 적용" />
 
-      {reportOpen && <ReportModal mode="director" onClose={() => setReportOpen(false)} />}
+      {reportOpen && (
+        <ReportModal
+          mode="director"
+          studentId={summary.students[0]?.id}
+          studentName={summary.students[0]?.name}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
       {counselingModal && (
         <CounselingModal
           mode="new"

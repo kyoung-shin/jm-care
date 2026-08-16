@@ -697,7 +697,8 @@ interface NationwideStatsData {
     atRiskRate: number;
     reportsSent: number;
     reportsTotal: number;
-    reportViewTrackingAvailable: boolean;
+    reportsViewed: number;
+    reportViewRate: number | null;
   };
 }
 
@@ -733,7 +734,12 @@ function NationwideStats() {
           <StatCard label="평균 재원기간" value={es ? String(es.avgEnrolledMonths) : '—'} unit="개월" sub={es ? `전체 ${es.totalStudents}명 기준` : undefined} />
           <StatCard label="12개월 잔존율" value={es ? String(es.retention12moRate) : '—'} unit="%" sub={es ? `${es.retainedCount}명 / 전체 ${es.totalStudents}명` : undefined} />
           <StatCard label="이탈 위험군" value={es ? String(es.atRiskCount) : '—'} unit="명" sub={es ? `전체의 ${es.atRiskRate}%` : undefined} />
-          <StatCard label="리포트 열람률" value="—" unit="" sub={es ? `발송 ${es.reportsSent}건 · 열람 추적 미구현` : undefined} />
+          <StatCard
+            label="리포트 열람률"
+            value={es?.reportViewRate !== null && es?.reportViewRate !== undefined ? String(es.reportViewRate) : '—'}
+            unit="%"
+            sub={es ? `열람 ${es.reportsViewed}건 / 발송 ${es.reportsSent}건` : undefined}
+          />
         </div>
       </div>
     </div>

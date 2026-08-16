@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   X, FileText, RefreshCw, Printer, Download, Eye, Send,
-  TrendingUp, MessageSquare, BookOpen, ShieldCheck, Calendar,
+  TrendingUp, MessageSquare, BookOpen, ShieldCheck,
   Check, Edit3, Clock, Target, CheckCircle2,
 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
@@ -12,9 +12,13 @@ import { targetStudent, mockExams, subjects, parentData, subjectColors, statusCo
 interface Props {
   mode: 'director' | 'parent';
   onClose: () => void;
+  studentId?: string;
+  studentName?: string;
+  reportId?: string;
+  onSent?: () => void;
 }
 
-function SentState({ onClose }: { onClose: () => void }) {
+function SentState({ onClose, studentName, period, sentAtLabel }: { onClose: () => void; studentName: string; period: string; sentAtLabel: string }) {
   return (
     <div className="h-full flex items-center justify-center p-12">
       <div className="text-center max-w-md">
@@ -23,17 +27,12 @@ function SentState({ onClose }: { onClose: () => void }) {
         </div>
         <div className="serif-ko text-2xl font-bold text-slate-900 mb-2">발송 완료</div>
         <div className="text-sm text-slate-600 leading-relaxed mb-6">
-          김민준 학부모님께 <span className="font-semibold text-slate-900">2026년 4월 학습 리포트</span>가 발송되었습니다.<br />
-          학부모 앱 알림 · 카카오톡 알림톡 동시 발송
+          {studentName} 학부모님께 <span className="font-semibold text-slate-900">{period} 학습 리포트</span>가 발송되었습니다.
         </div>
         <div className="bg-stone-50 rounded-lg p-4 text-left text-xs text-slate-600 space-y-1.5 mb-6 border border-stone-200">
-          <div className="flex justify-between"><span>발송 시각</span><span className="num font-semibold text-slate-900">2026.05.12 14:32</span></div>
-          <div className="flex justify-between"><span>수신자</span><span className="font-semibold text-slate-900">김민준 학부모 (010-****-7821)</span></div>
-          <div className="flex justify-between"><span>발송자</span><span className="font-semibold text-slate-900">박지훈 담임 강사</span></div>
-          <div className="flex justify-between"><span>다음 리포트 예정일</span><span className="num font-semibold text-slate-900">2026.06.03</span></div>
+          <div className="flex justify-between"><span>발송 시각</span><span className="num font-semibold text-slate-900">{sentAtLabel}</span></div>
         </div>
         <div className="flex gap-2 justify-center">
-          <button className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50">발송 이력 보기</button>
           <button onClick={onClose} className="px-5 py-2 text-xs bg-slate-900 text-white rounded font-bold hover:bg-slate-800">완료</button>
         </div>
       </div>
@@ -41,19 +40,54 @@ function SentState({ onClose }: { onClose: () => void }) {
   );
 }
 
-export default function ReportModal({ mode, onClose }: Props) {
+export default function ReportModal({ mode, onClose, studentId, studentName, reportId, onSent }: Props) {
   const isDirector = mode === 'director';
   const [step, setStep] = useState<'review' | 'sent'>(isDirector ? 'review' : 'review');
   const [period, setPeriod] = useState('2026년 4월');
   const [includeGrades, setIncludeGrades] = useState(true);
   const [editingMessage, setEditingMessage] = useState(false);
   const [message, setMessage] = useState(
-    `안녕하세요, 김민준 학부모님. 박지훈 담임 강사입니다.\n\n` +
-    `민준이가 종로엠스쿨과 함께한 지 1년이 되었습니다. 이번 리포트에는 그동안의 성장을 함께 담았습니다.\n\n` +
-    `입학 시점 종합 백분위 73.8에서 시작해 4차 학력평가에서 85.8까지, 1년간 12점 상승했습니다. 전국 위치로는 상위 26.2%에서 상위 14.2%로 올라섰습니다. 특히 수학은 68에서 88로 20점 상승해 가장 크게 성장했고, 2월부터 고1 과정 선행을 시작했습니다.\n\n` +
-    `이번 학기 중점 관리 영역은 국어입니다. 고려대 합격생들의 중2 시점 평균(백분위 90) 대비 격차가 가장 큰 과목으로, 5월부터 독해 기초반을 주 2회 운영하고 있습니다.\n\n` +
-    `장기 로드맵상 민준이는 현재 '중등 기초역량 완성' 단계에 있으며 계획된 경로를 따라 착실히 가고 있습니다. 궁금하신 점은 언제든 연락 주십시오.`
+    `안녕하세요, ${studentName ?? '김민준'} 학부모님. 담임 강사입니다.\n\n` +
+    `이번 리포트에는 그동안의 성장을 함께 담았습니다. 궁금하신 점은 언제든 연락 주십시오.`
   );
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [sentAt, setSentAt] = useState<Date | null>(null);
+
+  // 학부모 모드: 실제 리포트 내용(기간/메시지)을 불러오고, 조회 시각을 기록
+  useEffect(() => {
+    if (isDirector || !studentId || !reportId) return;
+    fetch(`/api/students/${studentId}/reports`).then(r => r.json()).then((reports: { id: string; period: string; message: string | null }[]) => {
+      const real = Array.isArray(reports) ? reports.find(r => r.id === reportId) : null;
+      if (real) {
+        setPeriod(real.period);
+        if (real.message) setMessage(real.message);
+      }
+    }).catch(() => {});
+    fetch(`/api/students/${studentId}/reports/${reportId}/view`, { method: 'POST' }).catch(() => {});
+  }, [isDirector, studentId, reportId]);
+
+  const handleSend = async () => {
+    if (!studentId) { setSendError('발송 대상 학생 정보를 찾을 수 없습니다'); return; }
+    setSending(true);
+    setSendError('');
+    try {
+      const now = new Date();
+      const res = await fetch(`/api/students/${studentId}/reports`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ period, message, sentAt: now.toISOString() }),
+      });
+      if (!res.ok) throw new Error('발송에 실패했습니다');
+      setSentAt(now);
+      onSent?.();
+      setStep('sent');
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : '발송에 실패했습니다');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const reportData = { student: targetStudent, period, generatedAt: '2026.05.12 14:30', instructor: '박지훈 담임 강사' };
 
@@ -133,7 +167,14 @@ export default function ReportModal({ mode, onClose }: Props) {
             )}
 
             <div className="flex-1 overflow-y-auto bg-stone-100/40">
-              {step === 'sent' ? <SentState onClose={onClose} /> : (
+              {step === 'sent' ? (
+                <SentState
+                  onClose={onClose}
+                  studentName={studentName ?? '김민준'}
+                  period={period}
+                  sentAtLabel={sentAt ? sentAt.toLocaleString('ko-KR') : ''}
+                />
+              ) : (
                 <div className="p-8">
                   <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden">
                     <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white px-8 py-6 relative overflow-hidden">
@@ -310,15 +351,25 @@ export default function ReportModal({ mode, onClose }: Props) {
           {isDirector && step === 'review' && (
             <div className="border-t border-stone-200 bg-white px-6 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <CheckCircle2 size={12} className="text-emerald-600" />
-                <span>강사 메시지 작성 완료 · 발송 전 한번 더 확인하세요</span>
+                {sendError ? (
+                  <span className="text-red-600 font-semibold">{sendError}</span>
+                ) : (
+                  <>
+                    <CheckCircle2 size={12} className="text-emerald-600" />
+                    <span>강사 메시지 작성 완료 · 발송 전 한번 더 확인하세요</span>
+                  </>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={onClose} className="px-4 py-2 text-xs text-slate-700 hover:bg-stone-100 rounded">취소</button>
                 <button className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5"><Download size={12} /> PDF 저장</button>
                 <button className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5"><Eye size={12} /> 학부모 화면 미리보기</button>
-                <button onClick={() => setStep('sent')} className="px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white rounded font-bold flex items-center gap-1.5 shadow-sm">
-                  <Send size={12} /> 학부모께 발송하기
+                <button
+                  onClick={handleSend}
+                  disabled={sending}
+                  className="px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white rounded font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                >
+                  <Send size={12} /> {sending ? '발송 중...' : '학부모께 발송하기'}
                 </button>
               </div>
             </div>
