@@ -55,6 +55,27 @@ model AdmissionSchool {
   source     String?
   createdAt  DateTime               @default(now())
   updatedAt  DateTime               @updatedAt
+  tracks     AdmissionTrack[]
+}
+
+model AdmissionTrack {
+  id                String                @id @default(cuid())
+  schoolId          String
+  school            AdmissionSchool       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name              String
+  period            String
+  type              String?
+  method            String?
+  csatMinCriteria   String?
+  koreanHistory     String?
+  targetGrade       Float?
+  targetCsatMinRate Int?
+  targetRecordCount Int?
+  status            AdmissionSchoolStatus @default(DRAFT)
+  source            String?
+  updatedBy         String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 }
 
 model User {

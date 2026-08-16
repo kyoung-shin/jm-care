@@ -1,11 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 
 type AdmissionSchoolStatus = 'VERIFIED' | 'REVIEW' | 'DRAFT';
 
 const STATUS_LABELS: Record<AdmissionSchoolStatus, string> = { VERIFIED: '검증완료', REVIEW: '검토중', DRAFT: '초안' };
+const STATUS_CLS: Record<AdmissionSchoolStatus, string> = {
+  VERIFIED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  REVIEW: 'bg-amber-50 text-amber-700 border-amber-200',
+  DRAFT: 'bg-slate-100 text-slate-600 border-slate-200',
+};
 
 const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-violet-300';
 
@@ -17,6 +22,15 @@ interface SchoolData {
   typesCount: number;
   status: AdmissionSchoolStatus;
   source: string | null;
+}
+
+interface TrackRow {
+  id: string;
+  name: string;
+  period: string;
+  status: AdmissionSchoolStatus;
+  updatedBy: string | null;
+  updatedAt: string;
 }
 
 interface Props {
@@ -36,6 +50,15 @@ export default function AddSchoolModal({ defaultYear, school, onClose, onCreated
   const [source, setSource] = useState(school?.source ?? '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const [tracks, setTracks] = useState<TrackRow[] | null>(null);
+
+  useEffect(() => {
+    if (!school) return;
+    fetch(`/api/admin/admission-schools/${school.id}/tracks`).then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setTracks(d);
+    }).catch(() => setTracks([]));
+  }, [school]);
 
   const handleConfirm = async () => {
     if (!name.trim()) {
@@ -75,13 +98,13 @@ export default function AddSchoolModal({ defaultYear, school, onClose, onCreated
     <div className="fixed inset-0 z-50 ko-sans">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
       <div className="absolute inset-0 flex items-center justify-center p-6 pointer-events-none">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50">
+        <div className={`bg-white rounded-2xl shadow-2xl w-full ${isEdit ? 'max-w-2xl' : 'max-w-md'} pointer-events-auto overflow-hidden max-h-[90vh] flex flex-col`}>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
             <div className="serif-ko text-lg font-bold text-slate-900">{isEdit ? '학교 정보 수정' : '학교 추가'}</div>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
           </div>
 
-          <div className="p-6 space-y-4">
+          <div className="p-6 space-y-4 overflow-y-auto">
             <div>
               <label className="text-[11px] font-semibold text-slate-600 mb-1.5 block">학교 이름 <span className="text-red-500">*</span></label>
               <input value={name} onChange={e => setName(e.target.value)} placeholder="예: 고려대학교" className={inputCls} autoFocus />
@@ -111,9 +134,50 @@ export default function AddSchoolModal({ defaultYear, school, onClose, onCreated
               <input value={source} onChange={e => setSource(e.target.value)} placeholder="예: 고려대 2027 입학전형시행계획" className={inputCls} />
             </div>
             {error && <div className="text-xs text-red-600">{error}</div>}
+
+            {isEdit && (
+              <div className="border-t border-stone-200 pt-4">
+                <div className="text-[11px] font-semibold text-slate-600 mb-2">등록된 전형 {tracks ? `(${tracks.length})` : ''}</div>
+                {tracks === null && <div className="text-xs text-slate-400 py-3 text-center">불러오는 중...</div>}
+                {tracks !== null && tracks.length === 0 && (
+                  <div className="text-xs text-slate-400 py-3 text-center bg-stone-50 rounded-lg border border-stone-200">
+                    등록된 전형이 없습니다
+                  </div>
+                )}
+                {tracks !== null && tracks.length > 0 && (
+                  <div className="border border-stone-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-stone-50 text-[10px] text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-semibold">전형명</th>
+                          <th className="px-3 py-2 text-center font-semibold">모집시기</th>
+                          <th className="px-3 py-2 text-center font-semibold">상태</th>
+                          <th className="px-3 py-2 text-left font-semibold">최종 갱신</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tracks.map(t => (
+                          <tr key={t.id} className="border-t border-stone-100">
+                            <td className="px-3 py-2 font-semibold text-slate-900">{t.name}</td>
+                            <td className="px-3 py-2 text-center text-slate-600">{t.period}</td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-semibold ${STATUS_CLS[t.status]}`}>{STATUS_LABELS[t.status]}</span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="text-slate-700 num">{new Date(t.updatedAt).toLocaleDateString('ko-KR')}</div>
+                              <div className="text-[10px] text-slate-400">{t.updatedBy}</div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="flex gap-2 px-6 py-4 border-t border-stone-200 bg-stone-50">
+          <div className="flex gap-2 px-6 py-4 border-t border-stone-200 bg-stone-50 shrink-0">
             <button onClick={onClose} className="flex-1 py-2 text-sm border border-stone-300 rounded-lg text-slate-600 hover:bg-stone-100 transition-colors">
               취소
             </button>

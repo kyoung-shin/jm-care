@@ -225,46 +225,142 @@ function AdmissionDB() {
         </table>
       </div>
 
-      <div className="bg-white border border-stone-200 rounded-xl p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Edit3 size={14} className="text-violet-600" />
-          <div className="serif-ko text-base font-bold text-slate-900">전형 입력 폼 — 고려대 학업우수전형 (예시)</div>
+      <TrackInputForm schools={schools} />
+    </div>
+  );
+}
+
+function TrackInputForm({ schools }: { schools: AdmissionSchoolRow[] }) {
+  const [schoolId, setSchoolId] = useState('');
+  const [name, setName] = useState('');
+  const [period, setPeriod] = useState('수시');
+  const [type, setType] = useState('');
+  const [method, setMethod] = useState('');
+  const [csatMinCriteria, setCsatMinCriteria] = useState('');
+  const [koreanHistory, setKoreanHistory] = useState('');
+  const [targetGrade, setTargetGrade] = useState('');
+  const [targetCsatMinRate, setTargetCsatMinRate] = useState('');
+  const [targetRecordCount, setTargetRecordCount] = useState('');
+  const [source, setSource] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const selectedSchool = schools.find(s => s.id === schoolId);
+
+  const reset = () => {
+    setName(''); setPeriod('수시'); setType(''); setMethod('');
+    setCsatMinCriteria(''); setKoreanHistory('');
+    setTargetGrade(''); setTargetCsatMinRate(''); setTargetRecordCount(''); setSource('');
+  };
+
+  const handleSave = async (status: 'DRAFT' | 'VERIFIED') => {
+    if (!schoolId) { setError('학교를 선택해 주세요'); return; }
+    if (!name.trim()) { setError('전형명을 입력해 주세요'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/admin/admission-schools/${schoolId}/tracks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name, period, type, method, csatMinCriteria, koreanHistory,
+          targetGrade, targetCsatMinRate, targetRecordCount, source, status,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || '저장에 실패했습니다');
+        setSaving(false);
+        return;
+      }
+      reset();
+      setSaving(false);
+    } catch {
+      setError('저장에 실패했습니다');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white border border-stone-200 rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <Edit3 size={14} className="text-violet-600" />
+        <div className="serif-ko text-base font-bold text-slate-900">
+          전형 입력 폼{selectedSchool ? ` — ${selectedSchool.name}` : ''}
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="전형명" required><input className={inputCls} defaultValue="학업우수전형" /></Field>
-          <Field label="모집시기" required>
-            <select className={inputCls}><option>수시</option><option>정시</option><option>고입</option></select>
-          </Field>
-          <Field label="전형 유형"><input className={inputCls} defaultValue="학생부종합" /></Field>
-          <Field label="전형 방법"><input className={inputCls} defaultValue="서류 100% 일괄합산" /></Field>
-          <Field label="수능최저 기준" hint="(충족 판정용)">
-            <input className={inputCls} defaultValue="국·수·영·탐(1) 4개 중 3개 합 7 이내" />
-          </Field>
-          <Field label="한국사"><input className={inputCls} defaultValue="4등급 이내" /></Field>
-        </div>
-        <div className="mt-4 border-t border-stone-100 pt-4">
-          <div className="text-[11px] font-semibold text-slate-600 mb-2">목표 지표 (학생 갭 계산 기준)</div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-stone-50 rounded-lg p-3 border border-stone-200">
-              <div className="text-[10px] text-slate-500 mb-1">내신 평균 등급</div>
-              <div className="flex items-center gap-1"><input className="w-16 text-sm border border-stone-300 rounded px-2 py-1 num" defaultValue="1.5" /><span className="text-xs text-slate-500">등급 이하</span></div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="학교" required>
+          <select value={schoolId} onChange={e => setSchoolId(e.target.value)} className={inputCls}>
+            <option value="">학교를 선택하세요</option>
+            {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </Field>
+        <Field label="전형명" required>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="예: 학업우수전형" className={inputCls} />
+        </Field>
+        <Field label="모집시기" required>
+          <select value={period} onChange={e => setPeriod(e.target.value)} className={inputCls}>
+            <option>수시</option><option>정시</option><option>고입</option>
+          </select>
+        </Field>
+        <Field label="전형 유형">
+          <input value={type} onChange={e => setType(e.target.value)} placeholder="예: 학생부종합" className={inputCls} />
+        </Field>
+        <Field label="전형 방법">
+          <input value={method} onChange={e => setMethod(e.target.value)} placeholder="예: 서류 100% 일괄합산" className={inputCls} />
+        </Field>
+        <Field label="수능최저 기준" hint="(충족 판정용)">
+          <input value={csatMinCriteria} onChange={e => setCsatMinCriteria(e.target.value)} placeholder="예: 국·수·영·탐(1) 4개 중 3개 합 7 이내" className={inputCls} />
+        </Field>
+        <Field label="한국사">
+          <input value={koreanHistory} onChange={e => setKoreanHistory(e.target.value)} placeholder="예: 4등급 이내" className={inputCls} />
+        </Field>
+      </div>
+      <div className="mt-4 border-t border-stone-100 pt-4">
+        <div className="text-[11px] font-semibold text-slate-600 mb-2">목표 지표 (학생 갭 계산 기준)</div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-stone-50 rounded-lg p-3 border border-stone-200">
+            <div className="text-[10px] text-slate-500 mb-1">내신 평균 등급</div>
+            <div className="flex items-center gap-1">
+              <input value={targetGrade} onChange={e => setTargetGrade(e.target.value)} inputMode="decimal" className="w-16 text-sm border border-stone-300 rounded px-2 py-1 num" placeholder="1.5" />
+              <span className="text-xs text-slate-500">등급 이하</span>
             </div>
-            <div className="bg-stone-50 rounded-lg p-3 border border-stone-200">
-              <div className="text-[10px] text-slate-500 mb-1">수능최저 충족 가능성</div>
-              <div className="flex items-center gap-1"><input className="w-16 text-sm border border-stone-300 rounded px-2 py-1 num" defaultValue="80" /><span className="text-xs text-slate-500">% 이상</span></div>
+          </div>
+          <div className="bg-stone-50 rounded-lg p-3 border border-stone-200">
+            <div className="text-[10px] text-slate-500 mb-1">수능최저 충족 가능성</div>
+            <div className="flex items-center gap-1">
+              <input value={targetCsatMinRate} onChange={e => setTargetCsatMinRate(e.target.value)} inputMode="numeric" className="w-16 text-sm border border-stone-300 rounded px-2 py-1 num" placeholder="80" />
+              <span className="text-xs text-slate-500">% 이상</span>
             </div>
-            <div className="bg-stone-50 rounded-lg p-3 border border-stone-200">
-              <div className="text-[10px] text-slate-500 mb-1">생기부 계열적합 활동</div>
-              <div className="flex items-center gap-1"><input className="w-16 text-sm border border-stone-300 rounded px-2 py-1 num" defaultValue="3" /><span className="text-xs text-slate-500">건 이상</span></div>
+          </div>
+          <div className="bg-stone-50 rounded-lg p-3 border border-stone-200">
+            <div className="text-[10px] text-slate-500 mb-1">생기부 계열적합 활동</div>
+            <div className="flex items-center gap-1">
+              <input value={targetRecordCount} onChange={e => setTargetRecordCount(e.target.value)} inputMode="numeric" className="w-16 text-sm border border-stone-300 rounded px-2 py-1 num" placeholder="3" />
+              <span className="text-xs text-slate-500">건 이상</span>
             </div>
           </div>
         </div>
-        <div className="mt-4 flex items-center justify-between border-t border-stone-100 pt-4">
-          <div className="text-[11px] text-slate-500 flex items-center gap-1.5">출처: 고려대 2027 입학전형시행계획 · 검증: 입시연구팀</div>
-          <div className="flex gap-2">
-            <button className="px-3 py-1.5 text-xs border border-stone-300 rounded-lg hover:bg-stone-50">초안 저장</button>
-            <button className="px-4 py-1.5 text-xs bg-violet-600 text-white rounded-lg font-semibold flex items-center gap-1 hover:bg-violet-700"><CheckCircle2 size={13} /> 검증완료 등록</button>
-          </div>
+      </div>
+      <div className="mt-4 flex items-center justify-between border-t border-stone-100 pt-4">
+        <input value={source} onChange={e => setSource(e.target.value)} placeholder="출처 (예: 고려대 2027 입학전형시행계획)" className="text-[11px] text-slate-600 border border-transparent hover:border-stone-200 focus:border-stone-300 rounded px-1.5 py-1 focus:outline-none flex-1 mr-3" />
+        <div className="flex items-center gap-2 shrink-0">
+          {error && <div className="text-xs text-red-600">{error}</div>}
+          <button
+            onClick={() => handleSave('DRAFT')}
+            disabled={saving}
+            className="px-3 py-1.5 text-xs border border-stone-300 rounded-lg hover:bg-stone-50 disabled:opacity-50"
+          >
+            초안 저장
+          </button>
+          <button
+            onClick={() => handleSave('VERIFIED')}
+            disabled={saving}
+            className="px-4 py-1.5 text-xs bg-violet-600 text-white rounded-lg font-semibold flex items-center gap-1 hover:bg-violet-700 disabled:opacity-50"
+          >
+            <CheckCircle2 size={13} /> 검증완료 등록
+          </button>
         </div>
       </div>
     </div>
