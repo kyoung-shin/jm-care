@@ -9,19 +9,31 @@ const STATUS_LABELS: Record<AdmissionSchoolStatus, string> = { VERIFIED: '검증
 
 const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-violet-300';
 
+interface SchoolData {
+  id: string;
+  name: string;
+  dept: string | null;
+  year: number;
+  typesCount: number;
+  status: AdmissionSchoolStatus;
+  source: string | null;
+}
+
 interface Props {
   defaultYear: number;
+  school?: SchoolData;
   onClose: () => void;
   onCreated: () => void;
 }
 
-export default function AddSchoolModal({ defaultYear, onClose, onCreated }: Props) {
-  const [name, setName] = useState('');
-  const [dept, setDept] = useState('');
-  const [year, setYear] = useState(String(defaultYear));
-  const [typesCount, setTypesCount] = useState('0');
-  const [status, setStatus] = useState<AdmissionSchoolStatus>('DRAFT');
-  const [source, setSource] = useState('');
+export default function AddSchoolModal({ defaultYear, school, onClose, onCreated }: Props) {
+  const isEdit = !!school;
+  const [name, setName] = useState(school?.name ?? '');
+  const [dept, setDept] = useState(school?.dept ?? '');
+  const [year, setYear] = useState(String(school?.year ?? defaultYear));
+  const [typesCount, setTypesCount] = useState(String(school?.typesCount ?? 0));
+  const [status, setStatus] = useState<AdmissionSchoolStatus>(school?.status ?? 'DRAFT');
+  const [source, setSource] = useState(school?.source ?? '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -37,21 +49,24 @@ export default function AddSchoolModal({ defaultYear, onClose, onCreated }: Prop
     setSaving(true);
     setError('');
     try {
-      const res = await fetch('/api/admin/admission-schools', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, dept, year: Number(year), typesCount: Number(typesCount) || 0, status, source }),
-      });
+      const res = await fetch(
+        isEdit ? `/api/admin/admission-schools/${school!.id}` : '/api/admin/admission-schools',
+        {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, dept, year: Number(year), typesCount: Number(typesCount) || 0, status, source }),
+        }
+      );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || '학교 추가에 실패했습니다');
+        setError(data.error || (isEdit ? '학교 정보 수정에 실패했습니다' : '학교 추가에 실패했습니다'));
         setSaving(false);
         return;
       }
       onCreated();
       onClose();
     } catch {
-      setError('학교 추가에 실패했습니다');
+      setError(isEdit ? '학교 정보 수정에 실패했습니다' : '학교 추가에 실패했습니다');
       setSaving(false);
     }
   };
@@ -62,7 +77,7 @@ export default function AddSchoolModal({ defaultYear, onClose, onCreated }: Prop
       <div className="absolute inset-0 flex items-center justify-center p-6 pointer-events-none">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50">
-            <div className="serif-ko text-lg font-bold text-slate-900">학교 추가</div>
+            <div className="serif-ko text-lg font-bold text-slate-900">{isEdit ? '학교 정보 수정' : '학교 추가'}</div>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
           </div>
 

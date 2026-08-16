@@ -112,6 +112,7 @@ interface AdmissionSchoolRow {
   typesCount: number;
   status: 'VERIFIED' | 'REVIEW' | 'DRAFT';
   updatedBy: string | null;
+  source: string | null;
   updatedAt: string;
 }
 
@@ -128,6 +129,7 @@ function AdmissionDB() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingSchool, setEditingSchool] = useState<AdmissionSchoolRow | null>(null);
 
   const load = () => {
     fetch('/api/admin/admission-schools').then(r => r.json()).then(d => {
@@ -147,6 +149,14 @@ function AdmissionDB() {
     <div className="space-y-4">
       {showAddModal && (
         <AddSchoolModal defaultYear={currentAdmissionYear} onClose={() => setShowAddModal(false)} onCreated={load} />
+      )}
+      {editingSchool && (
+        <AddSchoolModal
+          defaultYear={currentAdmissionYear}
+          school={editingSchool}
+          onClose={() => setEditingSchool(null)}
+          onCreated={load}
+        />
       )}
       <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 flex items-start gap-3">
         <Database size={18} className="text-violet-600 mt-0.5 shrink-0" />
@@ -201,7 +211,10 @@ function AdmissionDB() {
                     <div className="text-[10px] text-slate-400">{s.updatedBy}</div>
                   </td>
                   <td className="px-3 py-3 text-right">
-                    <button className="text-xs text-slate-500 hover:text-slate-900 font-semibold flex items-center gap-0.5 ml-auto">
+                    <button
+                      onClick={() => setEditingSchool(s)}
+                      className="text-xs text-slate-500 hover:text-slate-900 font-semibold flex items-center gap-0.5 ml-auto"
+                    >
                       <Edit3 size={12} /> 편집
                     </button>
                   </td>
