@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Edit3, Trash2 } from 'lucide-react';
+import EditTrackModal, { type TrackData } from './EditTrackModal';
 
 type AdmissionSchoolStatus = 'VERIFIED' | 'REVIEW' | 'DRAFT';
 
@@ -24,15 +25,6 @@ interface SchoolData {
   source: string | null;
 }
 
-interface TrackRow {
-  id: string;
-  name: string;
-  period: string;
-  status: AdmissionSchoolStatus;
-  updatedBy: string | null;
-  updatedAt: string;
-}
-
 interface Props {
   defaultYear: number;
   school?: SchoolData;
@@ -51,14 +43,19 @@ export default function AddSchoolModal({ defaultYear, school, onClose, onCreated
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const [tracks, setTracks] = useState<TrackRow[] | null>(null);
+  const [tracks, setTracks] = useState<TrackData[] | null>(null);
+  const [editingTrack, setEditingTrack] = useState<TrackData | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadTracks = () => {
     if (!school) return;
     fetch(`/api/admin/admission-schools/${school.id}/tracks`).then(r => r.json()).then(d => {
       if (Array.isArray(d)) setTracks(d);
     }).catch(() => setTracks([]));
-  }, [school]);
+  };
+
+  useEffect(loadTracks, [school]);
 
   const handleConfirm = async () => {
     if (!name.trim()) {
@@ -91,6 +88,18 @@ export default function AddSchoolModal({ defaultYear, school, onClose, onCreated
     } catch {
       setError(isEdit ? '학교 정보 수정에 실패했습니다' : '학교 추가에 실패했습니다');
       setSaving(false);
+    }
+  };
+
+  const handleDeleteTrack = async (trackId: string) => {
+    if (!school) return;
+    setDeletingId(trackId);
+    try {
+      const res = await fetch(`/api/admin/admission-schools/${school.id}/tracks/${trackId}`, { method: 'DELETE' });
+      if (res.ok) loadTracks();
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
     }
   };
 
@@ -153,6 +162,7 @@ export default function AddSchoolModal({ defaultYear, school, onClose, onCreated
                           <th className="px-3 py-2 text-center font-semibold">모집시기</th>
                           <th className="px-3 py-2 text-center font-semibold">상태</th>
                           <th className="px-3 py-2 text-left font-semibold">최종 갱신</th>
+                          <th className="px-3 py-2"></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -166,6 +176,32 @@ export default function AddSchoolModal({ defaultYear, school, onClose, onCreated
                             <td className="px-3 py-2">
                               <div className="text-slate-700 num">{new Date(t.updatedAt).toLocaleDateString('ko-KR')}</div>
                               <div className="text-[10px] text-slate-400">{t.updatedBy}</div>
+                            </td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap">
+                              <button
+                                onClick={() => setEditingTrack(t)}
+                                className="text-slate-500 hover:text-slate-900 mr-2"
+                                title="편집"
+                              >
+                                <Edit3 size={12} />
+                              </button>
+                              {confirmDeleteId === t.id ? (
+                                <button
+                                  onClick={() => handleDeleteTrack(t.id)}
+                                  disabled={deletingId === t.id}
+                                  className="text-[10px] px-1.5 py-0.5 bg-red-600 text-white rounded font-semibold disabled:opacity-50"
+                                >
+                                  {deletingId === t.id ? '삭제 중' : '확인 삭제'}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmDeleteId(t.id)}
+                                  className="text-red-500 hover:text-red-700"
+                                  title="삭제"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -191,6 +227,15 @@ export default function AddSchoolModal({ defaultYear, school, onClose, onCreated
           </div>
         </div>
       </div>
+
+      {editingTrack && school && (
+        <EditTrackModal
+          schoolName={school.name}
+          track={editingTrack}
+          onClose={() => setEditingTrack(null)}
+          onSaved={loadTracks}
+        />
+      )}
     </div>
   );
 }
