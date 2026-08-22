@@ -7,7 +7,7 @@ import {
   Check, Edit3, Clock, Target, CheckCircle2,
 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
-import { parentData, subjectColors, statusConfig } from '@/lib/dummy-data';
+import { subjectColors, statusConfig, actionStatusConfig } from '@/lib/dummy-data';
 
 interface Props {
   mode: 'director' | 'parent';
@@ -30,6 +30,15 @@ interface RealMockExam {
   percentile: string | null;
 }
 
+interface RealCounseling {
+  id: string;
+  date: string;
+  actionName: string | null;
+  actionOwner: string | null;
+  actionDeadline: string | null;
+  actionStatus: string;
+}
+
 interface RealStudentData {
   id: string;
   name: string;
@@ -44,6 +53,7 @@ interface RealStudentData {
   instructor: { name: string } | null;
   branch: { name: string } | null;
   mockExams: RealMockExam[];
+  counselings: RealCounseling[];
 }
 
 const SUBJECTS = ['국어', '영어', '수학', '과학'] as const;
@@ -216,6 +226,10 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
   const displayName = realStudent?.name ?? studentName ?? '학생';
   const instructorName = realStudent?.instructor?.name ?? '담임 강사';
   const branchName = realStudent?.branch?.name ?? '';
+
+  const actionItems = (realStudent?.counselings ?? [])
+    .filter(c => c.actionName && c.actionName !== '(액션 미설정)')
+    .slice(0, 6);
 
   return (
     <div className="fixed inset-0 z-50 ko-sans">
@@ -440,20 +454,26 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                       <section>
                         <div className="serif-ko text-base font-bold text-slate-900 mb-3 flex items-center gap-2"><ShieldCheck size={14} className="text-amber-700" /> 학원이 약속한 학습 관리 진행 현황</div>
                         <div className="space-y-2">
-                          {parentData.ongoingPromises.map((p, i) => (
-                            <div key={i} className="border border-stone-200 rounded-lg p-4 bg-white">
-                              <div className="flex items-start justify-between mb-2">
-                                <div>
-                                  <div className="font-semibold text-slate-900 text-sm">{p.task}</div>
-                                  <div className="text-[11px] text-slate-500 mt-0.5">{p.detail} · <span className="num">{p.since}</span> 시작</div>
+                          {actionItems.length === 0 && (
+                            <div className="text-xs text-slate-400 text-center py-6 border border-dashed border-stone-300 rounded-lg">등록된 액션플랜이 없습니다</div>
+                          )}
+                          {actionItems.map(c => {
+                            const cfg = actionStatusConfig[c.actionStatus] ?? actionStatusConfig['in-progress'];
+                            return (
+                              <div key={c.id} className="border border-stone-200 rounded-lg p-4 bg-white">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div>
+                                    <div className="font-semibold text-slate-900 text-sm">{c.actionName}</div>
+                                    <div className="text-[11px] text-slate-500 mt-0.5">
+                                      담당 {c.actionOwner || '—'} · <span className="num">{c.date}</span> 합의
+                                      {c.actionDeadline && <> · 기한 <span className="num">{c.actionDeadline}</span></>}
+                                    </div>
+                                  </div>
+                                  <div className={`text-[10px] px-2 py-1 rounded-full font-bold shrink-0 ${cfg.bg} ${cfg.text}`}>{cfg.label}</div>
                                 </div>
-                                <div className="text-[10px] px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full font-bold shrink-0">진행 중 {p.progress}%</div>
                               </div>
-                              <div className="relative h-1.5 bg-stone-100 rounded-full overflow-hidden">
-                                <div className="absolute h-full bg-emerald-500 rounded-full" style={{ width: `${p.progress}%` }} />
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </section>
 
