@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import {
-  X, FileText, RefreshCw, Printer, Download, Eye, Send,
+  X, FileText, Printer, Download, Eye, Send,
   TrendingUp, MessageSquare, BookOpen, ShieldCheck,
   Check, Edit3, Clock, Target, CheckCircle2,
 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
-import { targetStudent, mockExams, subjects, parentData, subjectColors, statusConfig } from '@/lib/dummy-data';
+import { parentData, subjectColors, statusConfig } from '@/lib/dummy-data';
 
 interface Props {
   mode: 'director' | 'parent';
@@ -16,6 +16,49 @@ interface Props {
   studentName?: string;
   reportId?: string;
   onSent?: () => void;
+}
+
+interface RealMockExam {
+  id: string;
+  name: string;
+  date: string;
+  korean: number | null;
+  english: number | null;
+  math: number | null;
+  science: number | null;
+  avg: number | null;
+  percentile: string | null;
+}
+
+interface RealStudentData {
+  id: string;
+  name: string;
+  grade: string;
+  school: string;
+  enrolledMonths: number;
+  finalGoalSchool: string | null;
+  finalGoalDetail: string | null;
+  finalGoalTrack: string | null;
+  daysUntilCSAT: number | null;
+  subjectTargets: Record<string, number> | null;
+  instructor: { name: string } | null;
+  branch: { name: string } | null;
+  mockExams: RealMockExam[];
+}
+
+const SUBJECTS = ['국어', '영어', '수학', '과학'] as const;
+const SUBJECT_FIELD: Record<string, 'korean' | 'english' | 'math' | 'science'> = {
+  국어: 'korean', 영어: 'english', 수학: 'math', 과학: 'science',
+};
+
+function formatPeriodLabel(dateStr: string): string {
+  const m = dateStr.match(/(\d{4})\.(\d{2})/);
+  return m ? `${m[1]}년 ${Number(m[2])}월` : dateStr;
+}
+
+function formatGeneratedAt(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function SentState({ onClose, studentName, period, sentAtLabel }: { onClose: () => void; studentName: string; period: string; sentAtLabel: string }) {
@@ -43,16 +86,28 @@ function SentState({ onClose, studentName, period, sentAtLabel }: { onClose: () 
 export default function ReportModal({ mode, onClose, studentId, studentName, reportId, onSent }: Props) {
   const isDirector = mode === 'director';
   const [step, setStep] = useState<'review' | 'sent'>(isDirector ? 'review' : 'review');
-  const [period, setPeriod] = useState('2026년 4월');
+  const [parentPeriod, setParentPeriod] = useState('');
   const [includeGrades, setIncludeGrades] = useState(true);
   const [editingMessage, setEditingMessage] = useState(false);
   const [message, setMessage] = useState(
-    `안녕하세요, ${studentName ?? '김민준'} 학부모님. 담임 강사입니다.\n\n` +
+    `안녕하세요, ${studentName ?? '학생'} 학부모님. 담임 강사입니다.\n\n` +
     `이번 리포트에는 그동안의 성장을 함께 담았습니다. 궁금하신 점은 언제든 연락 주십시오.`
   );
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const [sentAt, setSentAt] = useState<Date | null>(null);
+  const [generatedAt] = useState(() => new Date());
+
+  const [realStudent, setRealStudent] = useState<RealStudentData | null>(null);
+  const [selectedExamIdx, setSelectedExamIdx] = useState(-1);
+
+  // 실제 학생 데이터(목표·모의고사 성적 등) 로드
+  useEffect(() => {
+    if (!studentId) return;
+    fetch(`/api/students/${studentId}`).then(r => r.json()).then(d => {
+      if (!d.error) setRealStudent(d);
+    }).catch(() => {});
+  }, [studentId]);
 
   // 학부모 모드: 실제 리포트 내용(기간/메시지)을 불러오고, 조회 시각을 기록
   useEffect(() => {
@@ -60,12 +115,21 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
     fetch(`/api/students/${studentId}/reports`).then(r => r.json()).then((reports: { id: string; period: string; message: string | null }[]) => {
       const real = Array.isArray(reports) ? reports.find(r => r.id === reportId) : null;
       if (real) {
-        setPeriod(real.period);
+        setParentPeriod(real.period);
         if (real.message) setMessage(real.message);
       }
     }).catch(() => {});
     fetch(`/api/students/${studentId}/reports/${reportId}/view`, { method: 'POST' }).catch(() => {});
   }, [isDirector, studentId, reportId]);
+
+  // 상단에서 선택한 시점(=모의고사 회차)까지의 데이터로 리포트를 구성. 아직 선택하지 않았다면 최신 회차 기준.
+  const examCount = realStudent?.mockExams.length ?? 0;
+  const effectiveExamIdx = selectedExamIdx >= 0 && selectedExamIdx < examCount ? selectedExamIdx : examCount - 1;
+  const visibleExams = realStudent?.mockExams.slice(0, effectiveExamIdx + 1) ?? [];
+  const firstExam = visibleExams[0];
+  const latestExam = visibleExams[visibleExams.length - 1];
+  const hasGrowthRange = !!(firstExam && latestExam && firstExam !== latestExam);
+  const period = isDirector ? (latestExam ? formatPeriodLabel(latestExam.date) : '') : parentPeriod;
 
   const handleSend = async () => {
     if (!studentId) { setSendError('발송 대상 학생 정보를 찾을 수 없습니다'); return; }
@@ -89,7 +153,69 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
     }
   };
 
-  const reportData = { student: targetStudent, period, generatedAt: '2026.05.12 14:30', instructor: '박지훈 담임 강사' };
+  const chartData = visibleExams.map(e => ({
+    name: e.name, 국어: e.korean, 영어: e.english, 수학: e.math, 과학: e.science, avg: e.avg,
+  }));
+
+  const growthStats = (() => {
+    const percentile = latestExam?.percentile ?? '데이터 없음';
+    const percentileDelta = hasGrowthRange && firstExam?.percentile ? `${firstExam.percentile}에서 변화` : '';
+
+    const avgValue = latestExam?.avg === null || latestExam?.avg === undefined
+      ? '데이터 없음'
+      : hasGrowthRange && firstExam?.avg != null ? `${firstExam.avg} → ${latestExam.avg}` : `${latestExam.avg}`;
+    const avgDelta = hasGrowthRange && firstExam?.avg != null && latestExam?.avg != null
+      ? `${latestExam.avg - firstExam.avg >= 0 ? '+' : ''}${(latestExam.avg - firstExam.avg).toFixed(1)}`
+      : '';
+
+    let bestSubject: { label: string; delta: string } = { label: '데이터 부족', delta: '모의고사 2회 이상 필요' };
+    if (hasGrowthRange && firstExam && latestExam) {
+      let best: { name: string; delta: number } | null = null;
+      for (const name of SUBJECTS) {
+        const field = SUBJECT_FIELD[name];
+        const a = firstExam[field];
+        const b = latestExam[field];
+        if (a === null || b === null) continue;
+        const d = b - a;
+        if (!best || d > best.delta) best = { name, delta: d };
+      }
+      if (best) {
+        bestSubject = {
+          label: `${best.name} ${best.delta >= 0 ? '+' : ''}${best.delta}`,
+          delta: `${firstExam[SUBJECT_FIELD[best.name]]} → ${latestExam[SUBJECT_FIELD[best.name]]}`,
+        };
+      } else {
+        bestSubject = { label: '데이터 없음', delta: '' };
+      }
+    }
+
+    return [
+      { label: '종합 백분위', value: avgValue, delta: avgDelta },
+      { label: '전국 위치', value: percentile, delta: percentileDelta },
+      { label: '최고 성장 과목', value: bestSubject.label, delta: bestSubject.delta },
+    ];
+  })();
+
+  const subjectRows = SUBJECTS.map(name => {
+    const field = SUBJECT_FIELD[name];
+    const current = latestExam?.[field] ?? null;
+    const target = realStudent?.subjectTargets?.[name] ?? null;
+    const gap = current !== null && target !== null ? +(current - target).toFixed(1) : null;
+    const status: keyof typeof statusConfig | null = gap === null ? null : gap >= 0 ? 'good' : gap >= -3 ? 'close' : gap >= -7 ? 'lacking' : 'risk';
+    const note = target === null
+      ? '목표 점수가 설정되지 않았습니다.'
+      : current === null
+      ? '등록된 모의고사 성적이 없습니다.'
+      : status === 'good' ? '목표를 충족했습니다. 현 수준을 유지해 주세요.'
+      : status === 'close' ? '목표에 근접했습니다. 꾸준한 관리로 충족 가능합니다.'
+      : status === 'lacking' ? '목표 대비 격차가 있습니다. 보강이 필요합니다.'
+      : '목표 대비 격차가 큽니다. 집중 보강이 시급합니다.';
+    return { name, current, target, status, note };
+  });
+
+  const displayName = realStudent?.name ?? studentName ?? '학생';
+  const instructorName = realStudent?.instructor?.name ?? '담임 강사';
+  const branchName = realStudent?.branch?.name ?? '';
 
   return (
     <div className="fixed inset-0 z-50 ko-sans">
@@ -103,20 +229,22 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
               <div>
                 <div className="serif-ko text-lg font-bold text-slate-900">{isDirector ? '학부모 리포트 생성' : '월간 학습 리포트'}</div>
                 <div className="text-xs text-slate-500">
-                  {isDirector ? '자동 조립된 내용을 검수한 후 발송하실 수 있습니다' : `${reportData.period} · ${reportData.instructor} 작성`}
+                  {isDirector ? '자동 조립된 내용을 검수한 후 발송하실 수 있습니다' : `${period} · ${instructorName} 작성`}
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {isDirector && step === 'review' && (
-                <>
-                  <select value={period} onChange={e => setPeriod(e.target.value)} className="text-xs border border-stone-300 rounded px-2 py-1.5 bg-white">
-                    <option>2026년 4월</option><option>2026년 3월</option><option>2026년 2월</option>
-                  </select>
-                  <button className="text-xs px-3 py-1.5 bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1">
-                    <RefreshCw size={11} /> 데이터 새로 조립
-                  </button>
-                </>
+                <select
+                  value={effectiveExamIdx}
+                  onChange={e => setSelectedExamIdx(Number(e.target.value))}
+                  disabled={!realStudent || realStudent.mockExams.length === 0}
+                  className="text-xs border border-stone-300 rounded px-2 py-1.5 bg-white disabled:opacity-50"
+                >
+                  {realStudent && realStudent.mockExams.length > 0
+                    ? realStudent.mockExams.map((e, i) => <option key={e.id} value={i}>{formatPeriodLabel(e.date)}</option>)
+                    : <option>데이터 없음</option>}
+                </select>
               )}
               {!isDirector && (
                 <button className="text-xs px-3 py-1.5 bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1">
@@ -150,15 +278,6 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                     </label>
                   ))}
                 </div>
-                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mt-6 mb-3">발송 방식</div>
-                <div className="space-y-2 text-xs">
-                  {['학부모 앱 알림', '카카오톡 알림톡', '이메일 (PDF 첨부)', '모든 채널'].map((ch, i) => (
-                    <label key={i} className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="ch" defaultChecked={i === 0} />
-                      <span>{ch}</span>
-                    </label>
-                  ))}
-                </div>
                 <div className="mt-6 pt-5 border-t border-stone-200 text-[10px] text-slate-500 leading-relaxed flex items-start gap-1.5">
                   <ShieldCheck size={11} className="text-emerald-600 mt-0.5 shrink-0" />
                   <span>내부 메모, 위험 신호, 다른 학생 정보는 자동으로 제외됩니다.</span>
@@ -170,7 +289,7 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
               {step === 'sent' ? (
                 <SentState
                   onClose={onClose}
-                  studentName={studentName ?? '김민준'}
+                  studentName={displayName}
                   period={period}
                   sentAtLabel={sentAt ? sentAt.toLocaleString('ko-KR') : ''}
                 />
@@ -183,12 +302,12 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                         <div>
                           <div className="text-[10px] uppercase tracking-[0.25em] text-amber-300 mb-2">JONGNO M-SCHOOL · Monthly Report</div>
                           <div className="serif-ko text-3xl font-black leading-tight">월간 학습 리포트</div>
-                          <div className="text-sm text-slate-300 mt-2">{reportData.period} · {reportData.student.name} 학생 · 재원 1주년 특집</div>
+                          <div className="text-sm text-slate-300 mt-2">{period} · {displayName} 학생</div>
                         </div>
                         <div className="text-right">
                           <div className="text-[10px] text-slate-400">생성일</div>
-                          <div className="text-xs num font-semibold mt-0.5">{reportData.generatedAt}</div>
-                          <div className="text-[10px] text-slate-400 mt-2">{reportData.instructor}</div>
+                          <div className="text-xs num font-semibold mt-0.5">{formatGeneratedAt(generatedAt)}</div>
+                          <div className="text-[10px] text-slate-400 mt-2">{instructorName}</div>
                         </div>
                       </div>
                     </div>
@@ -198,44 +317,47 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                         <div className="grid grid-cols-2 gap-6">
                           <div>
                             <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">학생</div>
-                            <div className="serif-ko text-2xl font-bold text-slate-900">{reportData.student.name}</div>
-                            <div className="text-sm text-slate-600 mt-1">{reportData.student.grade} · {reportData.student.school}</div>
-                            <div className="text-[11px] text-slate-500 mt-1">재원 {reportData.student.enrolledMonths}개월 · 담임 {reportData.student.homeroom}</div>
+                            <div className="serif-ko text-2xl font-bold text-slate-900">{displayName}</div>
+                            <div className="text-sm text-slate-600 mt-1">{realStudent?.grade ?? ''} · {realStudent?.school ?? ''}</div>
+                            <div className="text-[11px] text-slate-500 mt-1">재원 {realStudent?.enrolledMonths ?? 0}개월 · 담임 {instructorName}</div>
                           </div>
                           <div className="border-l border-stone-200 pl-6">
                             <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-1"><Target size={10} /> 최종 진학 목표</div>
-                            <div className="serif-ko text-lg font-bold text-slate-900 leading-snug">{reportData.student.finalGoal.school}</div>
-                            <div className="text-xs text-slate-600 mt-0.5">{reportData.student.finalGoal.detail} · 중등 기초역량 단계</div>
-                            <div className="text-[11px] text-slate-500 mt-2 flex items-center gap-1"><Clock size={10} /> 수능까지 D-<span className="num font-semibold">1,647</span></div>
+                            <div className="serif-ko text-lg font-bold text-slate-900 leading-snug">{realStudent?.finalGoalSchool ?? '목표 미설정'}</div>
+                            {realStudent?.finalGoalDetail && <div className="text-xs text-slate-600 mt-0.5">{realStudent.finalGoalDetail}</div>}
+                            {realStudent?.finalGoalTrack && <div className="text-xs text-slate-500 mt-0.5">{realStudent.finalGoalTrack}</div>}
+                            {realStudent?.daysUntilCSAT != null && (
+                              <div className="text-[11px] text-slate-500 mt-2 flex items-center gap-1"><Clock size={10} /> 수능까지 D-<span className="num font-semibold">{realStudent.daysUntilCSAT.toLocaleString()}</span></div>
+                            )}
                           </div>
                         </div>
                       </section>
 
                       <section className="bg-gradient-to-br from-emerald-50/60 to-stone-50 rounded-xl p-6 border border-emerald-200">
                         <div className="text-[10px] uppercase tracking-widest text-emerald-700 mb-3 flex items-center gap-1.5 font-bold">
-                          <TrendingUp size={11} /> 입학 후 1년의 성장 — 4회 전국 학력평가 누적
+                          <TrendingUp size={11} /> 선택 시점까지의 성장 — 전국 학력평가 {visibleExams.length}회 누적
                         </div>
                         <div className="h-44 mb-3">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={mockExams} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" vertical={false} />
-                              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                              <YAxis domain={[60, 100]} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                              <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
-                              <ReferenceLine y={90} stroke="#94a3b8" strokeDasharray="4 4" />
-                              <Line type="monotone" dataKey="avg" name="종합" stroke="#0f172a" strokeWidth={3} dot={{ r: 4 }} />
-                              {includeGrades && Object.entries(subjectColors).map(([k, v]) => (
-                                <Line key={k} type="monotone" dataKey={k} stroke={v} strokeWidth={1.4} dot={{ r: 2.5 }} />
-                              ))}
-                            </LineChart>
-                          </ResponsiveContainer>
+                          {chartData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" vertical={false} />
+                                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                                <ReferenceLine y={90} stroke="#94a3b8" strokeDasharray="4 4" />
+                                <Line type="monotone" dataKey="avg" name="종합" stroke="#0f172a" strokeWidth={3} dot={{ r: 4 }} />
+                                {includeGrades && Object.entries(subjectColors).map(([k, v]) => (
+                                  <Line key={k} type="monotone" dataKey={k} stroke={v} strokeWidth={1.4} dot={{ r: 2.5 }} />
+                                ))}
+                              </LineChart>
+                            </ResponsiveContainer>
+                          ) : (
+                            <div className="h-full flex items-center justify-center text-xs text-slate-400">등록된 모의고사 성적이 없습니다</div>
+                          )}
                         </div>
                         <div className="grid grid-cols-3 gap-3 text-center">
-                          {[
-                            { label: '종합 백분위', value: '73.8 → 85.8', delta: '+12.0' },
-                            { label: '전국 위치', value: '상위 14.2%', delta: '26.2%에서 상승' },
-                            { label: '최고 성장 과목', value: '수학 +20', delta: '고1 선행 진행 중' },
-                          ].map((item, i) => (
+                          {growthStats.map((item, i) => (
                             <div key={i} className="bg-white rounded-lg border border-stone-200 p-3">
                               <div className="text-[10px] text-slate-500">{item.label}</div>
                               <div className="num font-black text-slate-900 text-lg">{item.value}</div>
@@ -263,10 +385,10 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                             <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{message}</div>
                           )}
                           <div className="mt-4 pt-3 border-t border-stone-200 flex items-center gap-2 text-[11px] text-slate-500">
-                            <div className="w-7 h-7 rounded-full bg-slate-900 text-white serif-ko flex items-center justify-center font-bold text-xs">박</div>
+                            <div className="w-7 h-7 rounded-full bg-slate-900 text-white serif-ko flex items-center justify-center font-bold text-xs">{instructorName.charAt(0)}</div>
                             <div>
-                              <div className="text-slate-900 font-semibold">박지훈 담임 강사</div>
-                              <div className="text-[10px]">운정점 · 김민준 학생 담당 · 12개월째</div>
+                              <div className="text-slate-900 font-semibold">{instructorName}</div>
+                              <div className="text-[10px]">{branchName} · {displayName} 학생 담당 · {realStudent?.enrolledMonths ?? 0}개월째</div>
                             </div>
                           </div>
                         </div>
@@ -285,26 +407,25 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                               </tr>
                             </thead>
                             <tbody>
-                              {[
-                                { ...subjects[0], note: '1년간 +12 상승 중이나 합격생 경로 대비 갭 최대. 5월부터 독해 기초반 주 2회 진행 중.' },
-                                { ...subjects[1], note: '기준 도달. 현 수준 유지로 충분합니다.' },
-                                { ...subjects[2], note: '1년간 +20으로 최고 성장. 고1 과정 선행 진행 중, 월간 점검 유지.' },
-                                { ...subjects[3], note: '점진 상승 중. 공학계열 대비 탐구 개념 연결 특강 검토 중.' },
-                              ].map((s, i) => {
-                                const cfg = statusConfig[s.status];
+                              {subjectRows.map((s, i) => {
+                                const cfg = s.status ? statusConfig[s.status] : null;
                                 return (
                                   <tr key={i} className="border-t border-stone-200">
                                     <td className="px-4 py-3 font-bold text-slate-900 serif-ko">{s.name}</td>
                                     <td className="px-4 py-3">
-                                      <div className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border} font-semibold`}>
-                                        <div className={`w-1.5 h-1.5 rounded-full ${cfg.soft}`} /> {cfg.label}
-                                      </div>
+                                      {cfg ? (
+                                        <div className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border} font-semibold`}>
+                                          <div className={`w-1.5 h-1.5 rounded-full ${cfg.soft}`} /> {cfg.label}
+                                        </div>
+                                      ) : (
+                                        <div className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-stone-100 text-slate-500 border border-stone-200 font-semibold">—</div>
+                                      )}
                                     </td>
                                     {includeGrades && (
                                       <td className="px-4 py-3 text-center">
-                                        <span className="text-lg font-black num text-slate-900">{s.current}</span>
+                                        <span className="text-lg font-black num text-slate-900">{s.current ?? '—'}</span>
                                         <span className="text-xs text-slate-500 mx-1">/</span>
-                                        <span className="text-xs text-slate-500 num">{s.target}</span>
+                                        <span className="text-xs text-slate-500 num">{s.target ?? '—'}</span>
                                       </td>
                                     )}
                                     <td className="px-4 py-3 text-[12px] text-slate-700 leading-relaxed">{s.note}</td>
@@ -337,9 +458,9 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                       </section>
 
                       <div className="pt-6 border-t border-stone-200 text-center">
-                        <div className="serif-ko text-base font-bold text-slate-900">종로엠스쿨 운정점</div>
+                        <div className="serif-ko text-base font-bold text-slate-900">종로엠스쿨{branchName ? ` ${branchName}` : ''}</div>
                         <div className="text-[11px] text-slate-500 mt-1">학생 한 명의 진학 성공을 위해, 매월 정성껏 안내드립니다.</div>
-                        <div className="text-[10px] text-slate-400 mt-3 num">JM-CARE Report · {reportData.generatedAt} 자동 생성 + 강사 검수 완료</div>
+                        <div className="text-[10px] text-slate-400 mt-3 num">JM-CARE Report · {formatGeneratedAt(generatedAt)} 자동 생성 + 강사 검수 완료</div>
                       </div>
                     </div>
                   </div>
@@ -362,7 +483,6 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={onClose} className="px-4 py-2 text-xs text-slate-700 hover:bg-stone-100 rounded">취소</button>
-                <button className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5"><Download size={12} /> PDF 저장</button>
                 <button className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5"><Eye size={12} /> 학부모 화면 미리보기</button>
                 <button
                   onClick={handleSend}
