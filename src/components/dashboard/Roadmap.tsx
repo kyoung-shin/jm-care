@@ -8,12 +8,12 @@ export interface RoadmapStep {
   status: 'done' | 'current' | 'upcoming' | 'goal';
 }
 
-const DEFAULT_ROADMAP: RoadmapStep[] = [
-  { stage: '중2', period: '현재', label: '기초 역량 완성', desc: '국영수과 기초 백분위 도달 + 학습 습관 정착', status: 'current' },
-  { stage: '중3', period: '내년', label: '고입 · 고교 선행', desc: '고교 진학 준비 + 핵심 과목 선행 완성', status: 'upcoming' },
-  { stage: '고1', period: '', label: '내신 안착', desc: '첫 내신 안착 + 수시/정시 트랙 결정', status: 'upcoming' },
-  { stage: '고2', period: '', label: '학생부 핵심 완성', desc: '탐구·활동 완성 + 모의고사 등급 안정화', status: 'upcoming' },
-  { stage: '고3', period: '', label: '수능 · 지원', desc: '목표 대학 수시/정시 지원', status: 'goal' },
+const STAGE_TEMPLATE: RoadmapStep[] = [
+  { stage: '중2', period: '', label: '', desc: '', status: 'upcoming' },
+  { stage: '중3', period: '', label: '', desc: '', status: 'upcoming' },
+  { stage: '고1', period: '', label: '', desc: '', status: 'upcoming' },
+  { stage: '고2', period: '', label: '', desc: '', status: 'upcoming' },
+  { stage: '고3', period: '', label: '', desc: '', status: 'upcoming' },
 ];
 
 interface Props {
@@ -24,7 +24,8 @@ interface Props {
 }
 
 export default function Roadmap({ roadmap, daysUntilCSAT, daysUntilHS, finalGoalSchool }: Props) {
-  const steps = roadmap && roadmap.length > 0 ? roadmap : DEFAULT_ROADMAP;
+  const hasRealRoadmap = !!(roadmap && roadmap.length > 0);
+  const steps = hasRealRoadmap ? roadmap! : STAGE_TEMPLATE;
 
   return (
     <div className="bg-white border border-stone-200 rounded-xl p-6 mb-4">
@@ -46,13 +47,19 @@ export default function Roadmap({ roadmap, daysUntilCSAT, daysUntilHS, finalGoal
         </div>
       </div>
 
+      {!hasRealRoadmap && (
+        <div className="mb-4 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          아직 입력된 로드맵이 없습니다. &quot;학생 종합 현황 입력&quot;에서 단계별 제목·설명과 현재 단계를 설정할 수 있습니다.
+        </div>
+      )}
+
       <div className="relative">
         <div className="absolute left-0 right-0 top-[18px] h-1 bg-stone-100 rounded-full" />
         <div className="absolute left-0 top-[18px] h-1 bg-gradient-to-r from-emerald-500 to-amber-400 rounded-full" style={{ width: '13%' }} />
         <div className="grid grid-cols-5 gap-3 relative">
           {steps.map((r, i) => {
-            const isCurrent = r.status === 'current';
-            const isGoal = r.status === 'goal';
+            const isCurrent = hasRealRoadmap && r.status === 'current';
+            const isGoal = hasRealRoadmap && r.status === 'goal';
             return (
               <div key={i}>
                 <div className="flex items-center mb-3 h-10">
@@ -71,10 +78,10 @@ export default function Roadmap({ roadmap, daysUntilCSAT, daysUntilHS, finalGoal
                 <div className={`rounded-lg p-3 border ${isCurrent ? 'bg-amber-50 border-amber-300' : isGoal ? 'bg-slate-900 border-slate-900 text-white' : 'bg-stone-50/60 border-stone-200'}`}>
                   <div className="flex items-baseline gap-1.5">
                     <span className={`serif-ko text-base font-black ${isGoal ? 'text-amber-300' : 'text-slate-900'}`}>{r.stage}</span>
-                    <span className={`text-[10px] num ${isGoal ? 'text-slate-400' : 'text-slate-500'}`}>{r.period}</span>
+                    {r.period && <span className={`text-[10px] num ${isGoal ? 'text-slate-400' : 'text-slate-500'}`}>{r.period}</span>}
                   </div>
-                  <div className={`text-xs font-bold mt-1 ${isGoal ? 'text-white' : 'text-slate-800'}`}>{r.label}</div>
-                  <div className={`text-[10px] mt-1 leading-relaxed ${isGoal ? 'text-slate-300' : 'text-slate-500'}`}>{r.desc}</div>
+                  <div className={`text-xs font-bold mt-1 ${isGoal ? 'text-white' : r.label ? 'text-slate-800' : 'text-slate-400 italic'}`}>{r.label || '미입력'}</div>
+                  {r.desc && <div className={`text-[10px] mt-1 leading-relaxed ${isGoal ? 'text-slate-300' : 'text-slate-500'}`}>{r.desc}</div>}
                   {isCurrent && <div className="text-[9px] font-bold text-amber-700 mt-1.5 uppercase tracking-wider">● 현재 단계</div>}
                 </div>
               </div>
@@ -83,10 +90,12 @@ export default function Roadmap({ roadmap, daysUntilCSAT, daysUntilHS, finalGoal
         </div>
       </div>
 
-      <div className="mt-4 pt-4 border-t border-stone-100 text-[11px] text-slate-500 flex items-start gap-2">
-        <Sparkles size={11} className="text-amber-500 mt-0.5 shrink-0" />
-        <span>각 단계의 목표 수치는 합격생들의 동일 시점 평균 데이터를 기준으로 설정되며, 단계 전환 시 자동으로 다음 단계 기준이 적용됩니다.</span>
-      </div>
+      {hasRealRoadmap && (
+        <div className="mt-4 pt-4 border-t border-stone-100 text-[11px] text-slate-500 flex items-start gap-2">
+          <Sparkles size={11} className="text-amber-500 mt-0.5 shrink-0" />
+          <span>각 단계의 제목·설명은 &quot;학생 종합 현황 입력&quot;에서 강사가 직접 설정한 내용입니다.</span>
+        </div>
+      )}
     </div>
   );
 }

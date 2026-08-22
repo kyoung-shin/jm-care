@@ -43,8 +43,15 @@ export default function StudentInputModal({ studentId, studentName, onClose, onS
   const [exam, setExam] = useState({ name: '', date: '', fullName: '' });
   const [examScores, setExamScores] = useState<Record<string, string>>({});
 
-  // 로드맵 — 현재 단계만 선택
+  // 로드맵 — 단계별 제목/설명 + 현재 단계
   const [currentStage, setCurrentStage] = useState('');
+  const [roadmapStages, setRoadmapStages] = useState<Record<string, { label: string; desc: string }>>({});
+  const updateRoadmapStage = (stage: string, field: 'label' | 'desc', value: string) => {
+    setRoadmapStages(prev => {
+      const current = prev[stage] ?? { label: '', desc: '' };
+      return { ...prev, [stage]: { ...current, [field]: value } };
+    });
+  };
 
   // 위험 신호
   const [risk, setRisk] = useState<Record<string, { value: string; detail: string; tone: 'good' | 'risk' }>>({});
@@ -98,14 +105,17 @@ export default function StudentInputModal({ studentId, studentName, onClose, onS
         return acc;
       }, {} as Record<string, number>);
 
+      const currentIdx = ROADMAP_STAGES.indexOf(currentStage as typeof ROADMAP_STAGES[number]);
+      const lastIdx = ROADMAP_STAGES.length - 1;
       const roadmap = currentStage
-        ? ROADMAP_STAGES.map(stage => ({
+        ? ROADMAP_STAGES.map((stage, i) => ({
             stage,
-            period: '',
-            label: stage === currentStage ? '진행 중 단계' : '',
-            desc: '',
-            status: stage === currentStage ? 'current' as const
-              : ROADMAP_STAGES.indexOf(stage) < ROADMAP_STAGES.indexOf(currentStage as typeof ROADMAP_STAGES[number]) ? 'done' as const
+            period: i === currentIdx ? '현재' : '',
+            label: roadmapStages[stage]?.label?.trim() ?? '',
+            desc: roadmapStages[stage]?.desc?.trim() ?? '',
+            status: i === lastIdx ? 'goal' as const
+              : i === currentIdx ? 'current' as const
+              : i < currentIdx ? 'done' as const
               : 'upcoming' as const,
           }))
         : undefined;
@@ -216,11 +226,30 @@ export default function StudentInputModal({ studentId, studentName, onClose, onS
 
             {/* 로드맵 */}
             <section>
-              <div className="flex items-center gap-2 mb-3"><Map size={14} className="text-slate-700" /><div className="text-sm font-bold text-slate-900">현재 로드맵 단계</div></div>
-              <select className={inputCls} value={currentStage} onChange={e => setCurrentStage(e.target.value)}>
-                <option value="">변경 없음</option>
-                {ROADMAP_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <div className="flex items-center gap-2 mb-3"><Map size={14} className="text-slate-700" /><div className="text-sm font-bold text-slate-900">장기 로드맵</div></div>
+              <div className="text-[11px] text-slate-500 mb-2">단계별 제목·설명을 입력하고, 현재 단계를 표시하세요. 비워두면 해당 단계는 미입력으로 표시됩니다.</div>
+              <div className="space-y-2">
+                {ROADMAP_STAGES.map(stage => (
+                  <div key={stage} className="grid grid-cols-[52px_1fr_1fr_60px] gap-2 items-center">
+                    <div className="text-xs font-bold text-slate-700">{stage}</div>
+                    <input
+                      className={inputCls}
+                      placeholder="단계 제목 (예: 기초 역량 완성)"
+                      value={roadmapStages[stage]?.label ?? ''}
+                      onChange={e => updateRoadmapStage(stage, 'label', e.target.value)}
+                    />
+                    <input
+                      className={inputCls}
+                      placeholder="세부 설명"
+                      value={roadmapStages[stage]?.desc ?? ''}
+                      onChange={e => updateRoadmapStage(stage, 'desc', e.target.value)}
+                    />
+                    <label className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer">
+                      <input type="radio" name="currentStage" checked={currentStage === stage} onChange={() => setCurrentStage(stage)} /> 현재
+                    </label>
+                  </div>
+                ))}
+              </div>
             </section>
 
             {/* 위험 신호 */}
