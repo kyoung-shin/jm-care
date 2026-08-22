@@ -345,6 +345,7 @@ function InstructorPage() {
         <StudentInputModal
           studentId={inputStudent.id}
           studentName={inputStudent.name}
+          grade={inputStudent.grade}
           onClose={() => setInputStudent(null)}
           onSaved={loadSummary}
         />

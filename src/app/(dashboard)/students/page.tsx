@@ -84,6 +84,7 @@ function StudentsListPage() {
         <StudentInputModal
           studentId={selected.id}
           studentName={selected.name}
+          grade={selected.grade}
           onClose={() => setSelected(null)}
           onSaved={load}
         />

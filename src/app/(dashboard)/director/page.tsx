@@ -269,7 +269,7 @@ function DirectorPage() {
         </div>
       </div>
 
-      <Roadmap roadmap={student.roadmap} daysUntilCSAT={student.daysUntilCSAT} daysUntilHS={student.daysUntilHS} finalGoalSchool={student.finalGoalSchool} />
+      <Roadmap roadmap={student.roadmap} daysUntilCSAT={student.daysUntilCSAT} daysUntilHS={student.daysUntilHS} finalGoalSchool={student.finalGoalSchool} studentGrade={student.grade} />
       <MockExamChart mockExams={student.mockExams} />
 
       {/* 핵심 4과목 */}

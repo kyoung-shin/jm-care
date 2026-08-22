@@ -8,24 +8,30 @@ export interface RoadmapStep {
   status: 'done' | 'current' | 'upcoming' | 'goal';
 }
 
-const STAGE_TEMPLATE: RoadmapStep[] = [
-  { stage: '중2', period: '', label: '', desc: '', status: 'upcoming' },
-  { stage: '중3', period: '', label: '', desc: '', status: 'upcoming' },
-  { stage: '고1', period: '', label: '', desc: '', status: 'upcoming' },
-  { stage: '고2', period: '', label: '', desc: '', status: 'upcoming' },
-  { stage: '고3', period: '', label: '', desc: '', status: 'upcoming' },
-];
+const GRADE_SEQUENCE = ['초1', '초2', '초3', '초4', '초5', '초6', '중1', '중2', '중3', '고1', '고2', '고3'];
+function stagesFromGrade(grade?: string | null): string[] {
+  const idx = grade ? GRADE_SEQUENCE.indexOf(grade) : -1;
+  return idx === -1 ? ['중2', '중3', '고1', '고2', '고3'] : GRADE_SEQUENCE.slice(idx);
+}
 
 interface Props {
   roadmap?: RoadmapStep[] | null;
   daysUntilCSAT?: number | null;
   daysUntilHS?: number | null;
   finalGoalSchool?: string | null;
+  studentGrade?: string | null;
 }
 
-export default function Roadmap({ roadmap, daysUntilCSAT, daysUntilHS, finalGoalSchool }: Props) {
+export default function Roadmap({ roadmap, daysUntilCSAT, daysUntilHS, finalGoalSchool, studentGrade }: Props) {
   const hasRealRoadmap = !!(roadmap && roadmap.length > 0);
-  const steps = hasRealRoadmap ? roadmap! : STAGE_TEMPLATE;
+  const steps: RoadmapStep[] = hasRealRoadmap
+    ? roadmap!
+    : stagesFromGrade(studentGrade).map(stage => ({ stage, period: '', label: '', desc: '', status: 'upcoming' as const }));
+  const currentPct = (() => {
+    if (!hasRealRoadmap || steps.length <= 1) return 8;
+    const idx = steps.findIndex(s => s.status === 'current');
+    return idx === -1 ? 8 : Math.round((idx / (steps.length - 1)) * 100);
+  })();
 
   return (
     <div className="bg-white border border-stone-200 rounded-xl p-6 mb-4">
@@ -53,10 +59,11 @@ export default function Roadmap({ roadmap, daysUntilCSAT, daysUntilHS, finalGoal
         </div>
       )}
 
-      <div className="relative">
+      <div className="relative overflow-x-auto">
+        <div className="relative" style={{ minWidth: `${steps.length * 140}px` }}>
         <div className="absolute left-0 right-0 top-[18px] h-1 bg-stone-100 rounded-full" />
-        <div className="absolute left-0 top-[18px] h-1 bg-gradient-to-r from-emerald-500 to-amber-400 rounded-full" style={{ width: '13%' }} />
-        <div className="grid grid-cols-5 gap-3 relative">
+        <div className="absolute left-0 top-[18px] h-1 bg-gradient-to-r from-emerald-500 to-amber-400 rounded-full" style={{ width: `${currentPct}%` }} />
+        <div className="grid gap-3 relative" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
           {steps.map((r, i) => {
             const isCurrent = hasRealRoadmap && r.status === 'current';
             const isGoal = hasRealRoadmap && r.status === 'goal';
@@ -87,6 +94,7 @@ export default function Roadmap({ roadmap, daysUntilCSAT, daysUntilHS, finalGoal
               </div>
             );
           })}
+        </div>
         </div>
       </div>
 

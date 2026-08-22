@@ -6,6 +6,7 @@ import { X, Target, Activity, TrendingUp, Map, Save } from 'lucide-react';
 interface Props {
   studentId: string;
   studentName: string;
+  grade?: string;
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -14,12 +15,17 @@ const SUBJECTS = ['국어', '영어', '수학', '과학'] as const;
 const SUBJECT_FIELD: Record<string, 'korean' | 'english' | 'math' | 'science'> = {
   국어: 'korean', 영어: 'english', 수학: 'math', 과학: 'science',
 };
-const ROADMAP_STAGES = ['중2', '중3', '고1', '고2', '고3'] as const;
+const GRADE_SEQUENCE = ['초1', '초2', '초3', '초4', '초5', '초6', '중1', '중2', '중3', '고1', '고2', '고3'];
+function stagesFromGrade(grade?: string): string[] {
+  const idx = grade ? GRADE_SEQUENCE.indexOf(grade) : -1;
+  return idx === -1 ? ['중2', '중3', '고1', '고2', '고3'] : GRADE_SEQUENCE.slice(idx);
+}
 const RISK_LABELS = ['출결', '과제 수행률', '학습 태도', '종합 이탈위험'] as const;
 
 const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300';
 
-export default function StudentInputModal({ studentId, studentName, onClose, onSaved }: Props) {
+export default function StudentInputModal({ studentId, studentName, grade, onClose, onSaved }: Props) {
+  const ROADMAP_STAGES = stagesFromGrade(grade);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
@@ -105,7 +111,7 @@ export default function StudentInputModal({ studentId, studentName, onClose, onS
         return acc;
       }, {} as Record<string, number>);
 
-      const currentIdx = ROADMAP_STAGES.indexOf(currentStage as typeof ROADMAP_STAGES[number]);
+      const currentIdx = ROADMAP_STAGES.indexOf(currentStage);
       const lastIdx = ROADMAP_STAGES.length - 1;
       const roadmap = currentStage
         ? ROADMAP_STAGES.map((stage, i) => ({
