@@ -469,6 +469,7 @@ function DirectorPage() {
           mode={counselingModal.mode}
           data={counselingModal.data}
           prefill={counselingModal.prefill}
+          studentName={student?.name}
           onClose={() => setCounselingModal(null)}
           onSave={handleSaveCounseling}
           onToggleAction={handleToggleAction}

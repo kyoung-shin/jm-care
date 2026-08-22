@@ -8,12 +8,13 @@ interface Props {
   mode: 'new' | 'detail';
   data?: CounselingRecord;
   prefill?: { subject?: string; topic?: string; summary?: string; action?: string } | null;
+  studentName?: string;
   onClose: () => void;
   onSave: (record: CounselingRecord) => void;
   onToggleAction: (date: string) => void;
 }
 
-export default function CounselingModal({ mode, data, prefill, onClose, onSave, onToggleAction }: Props) {
+export default function CounselingModal({ mode, data, prefill, studentName, onClose, onSave, onToggleAction }: Props) {
   const isNew = mode === 'new';
   const today = '2026.05.12';
 
@@ -61,7 +62,7 @@ export default function CounselingModal({ mode, data, prefill, onClose, onSave, 
               <div>
                 <div className="serif-ko text-lg font-bold text-slate-900">{isNew ? '새 상담 기록 작성' : '상담 상세'}</div>
                 <div className="text-xs text-slate-500">
-                  김민준 학생 · {isNew ? '작성 후 종합 현황에 즉시 반영됩니다' : `${data?.date} · ${data?.type}`}
+                  {studentName ?? '학생'} · {isNew ? '작성 후 종합 현황에 즉시 반영됩니다' : `${data?.date} · ${data?.type}`}
                 </div>
               </div>
             </div>

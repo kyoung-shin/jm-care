@@ -12,7 +12,7 @@ import ReportModal from '@/components/modals/ReportModal';
 import StudentInputModal from '@/components/modals/StudentInputModal';
 import InstructorPickerModal from '@/components/modals/InstructorPickerModal';
 import Footer from '@/components/dashboard/Footer';
-import { statusConfig, actionStatusConfig } from '@/lib/dummy-data';
+import { statusConfig, actionStatusConfig, type CounselingRecord } from '@/lib/dummy-data';
 
 interface RealStudent {
   id: string;
@@ -106,6 +106,21 @@ function InstructorPage() {
       </RoleGuard>
     );
   }
+
+  const counselingTarget = summary.students[0];
+
+  const handleSaveCounseling = async (record: CounselingRecord) => {
+    setCounselingModal(null);
+    if (!counselingTarget) return;
+    try {
+      await fetch(`/api/students/${counselingTarget.id}/counselings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record),
+      });
+      loadSummary();
+    } catch { /* best-effort */ }
+  };
 
   const canSwitch = viewerRole === 'DIRECTOR' || viewerRole === 'ADMIN';
 
@@ -320,8 +335,9 @@ function InstructorPage() {
         <CounselingModal
           mode="new"
           prefill={null}
+          studentName={counselingTarget?.name}
           onClose={() => setCounselingModal(null)}
-          onSave={() => setCounselingModal(null)}
+          onSave={handleSaveCounseling}
           onToggleAction={() => {}}
         />
       )}
