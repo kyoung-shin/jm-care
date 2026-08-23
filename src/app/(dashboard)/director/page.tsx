@@ -21,7 +21,6 @@ type SubjectName = (typeof SUBJECT_NAMES)[number];
 const SUBJECT_FIELD: Record<SubjectName, 'korean' | 'english' | 'math' | 'science'> = {
   국어: 'korean', 영어: 'english', 수학: 'math', 과학: 'science',
 };
-const DEFAULT_TARGETS: Record<SubjectName, number> = { 국어: 90, 영어: 88, 수학: 90, 과학: 88 };
 
 interface StudentDetail {
   id: string;
@@ -51,9 +50,9 @@ interface StudentDetail {
 interface ComputedSubject {
   name: SubjectName;
   current: number | null;
-  target: number;
+  target: number | null;
   gap: number | null;
-  status: 'good' | 'close' | 'lacking' | 'risk';
+  status: 'good' | 'close' | 'lacking' | 'risk' | null;
   source: string;
   trend: number[];
 }
@@ -64,10 +63,10 @@ function computeSubjects(mockExams: MockExamRow[], subjectTargets: Partial<Recor
     const field = SUBJECT_FIELD[name];
     const trend = mockExams.map(e => e[field]).filter((v): v is number => typeof v === 'number');
     const current = latest?.[field] ?? null;
-    const target = subjectTargets?.[name] ?? DEFAULT_TARGETS[name];
-    const gap = typeof current === 'number' ? current - target : null;
+    const target = subjectTargets?.[name] ?? null;
+    const gap = typeof current === 'number' && typeof target === 'number' ? current - target : null;
     const status: ComputedSubject['status'] =
-      gap === null ? 'lacking' : gap >= 0 ? 'good' : gap >= -3 ? 'close' : gap >= -6 ? 'lacking' : 'risk';
+      gap === null ? null : gap >= 0 ? 'good' : gap >= -3 ? 'close' : gap >= -6 ? 'lacking' : 'risk';
     return { name, current, target, gap, status, source: latest ? `${latest.name} · ${latest.date}` : '기록 없음', trend };
   });
 }
@@ -282,26 +281,28 @@ function DirectorPage() {
         </div>
         <div className="grid grid-cols-4 gap-4">
           {subjects.map(s => {
-            const cfg = statusConfig[s.status];
+            const cfg = s.status ? statusConfig[s.status] : null;
             return (
-              <div key={s.name} className={`border ${cfg.border} ${cfg.bg} rounded-lg p-4 relative overflow-hidden`}>
+              <div key={s.name} className={`border ${cfg?.border ?? 'border-stone-200'} ${cfg?.bg ?? 'bg-stone-50/40'} rounded-lg p-4 relative overflow-hidden`}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="font-bold text-slate-900 text-base">{s.name}</div>
-                  <div className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${cfg.text} bg-white border ${cfg.border}`}>● {cfg.label}</div>
+                  <div className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${cfg?.text ?? 'text-slate-500'} bg-white border ${cfg?.border ?? 'border-stone-200'}`}>
+                    {cfg ? `● ${cfg.label}` : '목표 미설정'}
+                  </div>
                 </div>
                 <div className="flex items-baseline gap-1.5 mb-0.5">
                   <div className="text-[34px] font-black text-slate-900 num leading-none">{s.current ?? '—'}</div>
-                  <div className="text-xs text-slate-500">/ 목표 {s.target}</div>
+                  <div className="text-xs text-slate-500">/ 목표 {s.target ?? '—'}</div>
                 </div>
-                <div className={`text-xs ${cfg.text} font-semibold mb-3`}>
-                  {s.gap === null ? '기록 없음' : s.gap > 0 ? `+${s.gap} 우위` : s.gap === 0 ? '기준 도달' : `${Math.abs(s.gap)} 부족`}
+                <div className={`text-xs ${cfg?.text ?? 'text-slate-400'} font-semibold mb-3`}>
+                  {s.gap === null ? (s.target === null ? '목표 점수 미입력' : '기록 없음') : s.gap > 0 ? `+${s.gap} 우위` : s.gap === 0 ? '기준 도달' : `${Math.abs(s.gap)} 부족`}
                 </div>
                 <div className="h-12 -mx-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={s.trend.map((v, i) => ({ v, i }))}>
                       <YAxis hide domain={[0, 100]} />
-                      <Line type="monotone" dataKey="v" stroke={cfg.stroke} strokeWidth={2.2} dot={false} />
-                      <ReferenceLine y={s.target} stroke="#94a3b8" strokeDasharray="3 3" strokeWidth={1} />
+                      <Line type="monotone" dataKey="v" stroke={cfg?.stroke ?? '#94a3b8'} strokeWidth={2.2} dot={false} />
+                      {s.target !== null && <ReferenceLine y={s.target} stroke="#94a3b8" strokeDasharray="3 3" strokeWidth={1} />}
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -334,7 +335,7 @@ function DirectorPage() {
                       <div className="flex items-center gap-2">
                         <div className={`text-xs font-bold text-${color}-700`}>TOP {i + 1}</div>
                         <div className="font-bold text-slate-900">{s.name}</div>
-                        <div className={`text-[10px] px-1.5 py-0.5 rounded bg-${color}-100 text-${color}-700 font-semibold`}>{statusConfig[s.status].label}</div>
+                        <div className={`text-[10px] px-1.5 py-0.5 rounded bg-${color}-100 text-${color}-700 font-semibold`}>{s.status ? statusConfig[s.status].label : ''}</div>
                       </div>
                       <div className={`text-xs text-${color}-700 font-semibold num`}>{s.gap}</div>
                     </div>
