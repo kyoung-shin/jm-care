@@ -13,23 +13,26 @@ interface StudentListItem {
 }
 
 interface Props {
-  branchId: string;
+  branchId?: string;
+  students?: StudentListItem[];
   currentStudentId?: string;
+  title?: string;
   onSelect: (studentId: string) => void;
   onClose: () => void;
 }
 
-export default function StudentPickerModal({ branchId, currentStudentId, onSelect, onClose }: Props) {
-  const [students, setStudents] = useState<StudentListItem[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function StudentPickerModal({ branchId, students: providedStudents, currentStudentId, title, onSelect, onClose }: Props) {
+  const [students, setStudents] = useState<StudentListItem[]>(providedStudents ?? []);
+  const [loading, setLoading] = useState(!providedStudents && !!branchId);
   const [query, setQuery] = useState('');
 
   useEffect(() => {
+    if (providedStudents || !branchId) return;
     fetch(`/api/students?branchId=${branchId}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setStudents(d); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [branchId]);
+  }, [branchId, providedStudents]);
 
   const filtered = students.filter(s => s.name.includes(query) || s.school.includes(query));
 
@@ -39,7 +42,7 @@ export default function StudentPickerModal({ branchId, currentStudentId, onSelec
       <div className="absolute inset-0 flex items-center justify-center p-6 pointer-events-none">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col pointer-events-auto overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
-            <div className="serif-ko text-lg font-bold text-slate-900">학생 선택</div>
+            <div className="serif-ko text-lg font-bold text-slate-900">{title ?? '학생 선택'}</div>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
           </div>
           <div className="px-6 py-3 border-b border-stone-200 shrink-0">

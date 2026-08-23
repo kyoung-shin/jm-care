@@ -11,6 +11,7 @@ import CounselingModal from '@/components/modals/CounselingModal';
 import ReportModal from '@/components/modals/ReportModal';
 import StudentInputModal from '@/components/modals/StudentInputModal';
 import InstructorPickerModal from '@/components/modals/InstructorPickerModal';
+import StudentPickerModal from '@/components/modals/StudentPickerModal';
 import Footer from '@/components/dashboard/Footer';
 import { statusConfig, actionStatusConfig, type CounselingRecord } from '@/lib/dummy-data';
 
@@ -62,6 +63,8 @@ function InstructorPage() {
   const [instructorId, setInstructorId] = useState<string | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [reportStudentPickerOpen, setReportStudentPickerOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState<RealStudent | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [counselingModal, setCounselingModal] = useState<{
     mode: 'new' | 'detail';
@@ -142,7 +145,7 @@ function InstructorPage() {
           <div className="text-sm text-slate-500 mt-2">{summary.instructor.branch ?? ''} · 담당 학생 <span className="num font-semibold text-slate-700">{summary.students.length}</span>명</div>
         </div>
         <div className="flex items-center gap-2 text-xs">
-          <button onClick={() => setReportOpen(true)} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 rounded font-semibold flex items-center gap-1 shadow-sm">
+          <button onClick={() => setReportStudentPickerOpen(true)} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 rounded font-semibold flex items-center gap-1 shadow-sm">
             <FileText size={12} /> 학부모 리포트 생성
           </button>
           <button onClick={() => setCounselingModal({ mode: 'new' })} className="px-3 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-800 flex items-center gap-1">
@@ -323,12 +326,26 @@ function InstructorPage() {
 
       <Footer perspective="강사" extra="강사 본인이 담당하는 학생/액션/일정만 노출됩니다 · 권한 분리 적용" />
 
-      {reportOpen && (
+      {reportStudentPickerOpen && (
+        <StudentPickerModal
+          students={summary.students}
+          currentStudentId={reportTarget?.id}
+          title="리포트 생성 대상 학생 선택"
+          onSelect={id => {
+            const target = summary.students.find(s => s.id === id) ?? null;
+            setReportTarget(target);
+            setReportStudentPickerOpen(false);
+            setReportOpen(true);
+          }}
+          onClose={() => setReportStudentPickerOpen(false)}
+        />
+      )}
+      {reportOpen && reportTarget && (
         <ReportModal
           mode="director"
-          studentId={summary.students[0]?.id}
-          studentName={summary.students[0]?.name}
-          onClose={() => setReportOpen(false)}
+          studentId={reportTarget.id}
+          studentName={reportTarget.name}
+          onClose={() => { setReportOpen(false); setReportTarget(null); }}
         />
       )}
       {counselingModal && (
