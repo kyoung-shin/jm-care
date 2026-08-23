@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
   FileText, MessageSquare, Flame, AlertTriangle, Calendar, Activity,
-  Users, Inbox, ChevronRight,
+  Users, Inbox, ChevronRight, Phone,
 } from 'lucide-react';
 import CounselingModal from '@/components/modals/CounselingModal';
 import ReportModal from '@/components/modals/ReportModal';
@@ -15,6 +15,12 @@ import StudentPickerModal from '@/components/modals/StudentPickerModal';
 import ScheduleEventModal from '@/components/modals/ScheduleEventModal';
 import Footer from '@/components/dashboard/Footer';
 import { statusConfig, actionStatusConfig, type CounselingRecord } from '@/lib/dummy-data';
+
+const bookingStatusConfig: Record<string, { label: string; bg: string; text: string }> = {
+  pending: { label: '검토 중', bg: 'bg-amber-100', text: 'text-amber-700' },
+  confirmed: { label: '확정', bg: 'bg-emerald-100', text: 'text-emerald-700' },
+  declined: { label: '거절됨', bg: 'bg-stone-200', text: 'text-slate-500' },
+};
 
 interface RealStudent {
   id: string;
@@ -48,6 +54,18 @@ interface ScheduleDay {
   items: { id: string; time: string; type: string; label: string; urgent: boolean }[];
 }
 
+interface AppointmentRequestItem {
+  id: string;
+  type: string;
+  slot1: string;
+  slot2: string;
+  slot3: string;
+  status: string;
+  confirmedSlot: string | null;
+  createdAt: string;
+  student: { id: string; name: string };
+}
+
 interface Summary {
   instructor: { id: string; name: string; branch: string | null };
   students: RealStudent[];
@@ -63,6 +81,7 @@ function InstructorPage() {
   const [branchId, setBranchId] = useState<string | null>(null);
   const [instructorId, setInstructorId] = useState<string | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [appointments, setAppointments] = useState<AppointmentRequestItem[]>([]);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportStudentPickerOpen, setReportStudentPickerOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<RealStudent | null>(null);
@@ -103,6 +122,27 @@ function InstructorPage() {
   }, [instructorId]);
 
   useEffect(() => { loadSummary(); }, [loadSummary]);
+
+  const loadAppointments = useCallback(() => {
+    if (!instructorId) return;
+    fetch(`/api/instructors/${instructorId}/appointments`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setAppointments(d); })
+      .catch(() => {});
+  }, [instructorId]);
+
+  useEffect(() => { loadAppointments(); }, [loadAppointments]);
+
+  const handleDecideAppointment = async (id: string, status: 'confirmed' | 'declined', confirmedSlot?: string) => {
+    try {
+      await fetch(`/api/appointments/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, confirmedSlot }),
+      });
+      loadAppointments();
+    } catch { /* best-effort */ }
+  };
 
   if (!summary) {
     return (
@@ -340,6 +380,63 @@ function InstructorPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* 상담 예약 요청 */}
+      <div className="bg-white border border-stone-200 rounded-xl p-6 mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2"><Phone size={14} className="text-slate-700" /><div className="serif-ko text-base font-bold text-slate-900">상담 예약 요청</div></div>
+          {appointments.filter(a => a.status === 'pending').length > 0 && (
+            <div className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold">
+              대기 {appointments.filter(a => a.status === 'pending').length}건
+            </div>
+          )}
+        </div>
+        {appointments.length === 0 ? (
+          <div className="text-xs text-slate-400 text-center py-6">등록된 예약 요청이 없습니다</div>
+        ) : (
+          <div className="space-y-2.5">
+            {appointments.map(a => {
+              const cfg = bookingStatusConfig[a.status] ?? bookingStatusConfig.pending;
+              const slots = [a.slot1, a.slot2, a.slot3];
+              return (
+                <div key={a.id} className="border border-stone-200 rounded-lg p-4">
+                  <div className="flex items-start justify-between mb-2.5">
+                    <div className="flex items-center gap-2">
+                      {a.type === 'phone' ? <Phone size={13} className="text-slate-500" /> : <Calendar size={13} className="text-slate-500" />}
+                      <div className="text-sm font-bold text-slate-900">{a.student.name}</div>
+                      <div className="text-[11px] text-slate-500">{a.type === 'phone' ? '상담 전화 예약' : '대면 상담 예약'}</div>
+                    </div>
+                    <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 ${cfg.bg} ${cfg.text}`}>{cfg.label}</div>
+                  </div>
+                  {a.status === 'pending' ? (
+                    <div className="flex flex-wrap gap-2">
+                      {slots.map((slot, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleDecideAppointment(a.id, 'confirmed', slot)}
+                          className="text-[11px] num px-2.5 py-1.5 border border-stone-300 rounded-lg hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 font-semibold transition-colors"
+                        >
+                          {slot} 확정
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => handleDecideAppointment(a.id, 'declined')}
+                        className="text-[11px] px-2.5 py-1.5 border border-stone-300 rounded-lg hover:border-red-300 hover:bg-red-50 hover:text-red-600 text-slate-500 font-semibold transition-colors"
+                      >
+                        거절
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-600 num">
+                      {a.status === 'confirmed' ? `확정 일시 · ${a.confirmedSlot}` : `요청 일시 · ${slots.join(' / ')}`}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

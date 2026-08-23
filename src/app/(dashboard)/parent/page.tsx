@@ -8,8 +8,15 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import ReportModal from '@/components/modals/ReportModal';
+import AppointmentRequestModal from '@/components/modals/AppointmentRequestModal';
 import Footer from '@/components/dashboard/Footer';
 import { statusConfig, actionStatusConfig } from '@/lib/dummy-data';
+
+const bookingStatusConfig: Record<string, { label: string; bg: string; text: string }> = {
+  pending: { label: '검토 중', bg: 'bg-amber-500/20', text: 'text-amber-300' },
+  confirmed: { label: '확정', bg: 'bg-emerald-500/20', text: 'text-emerald-300' },
+  declined: { label: '조율 필요', bg: 'bg-red-500/20', text: 'text-red-300' },
+};
 
 const SUBJECTS = ['국어', '영어', '수학', '과학'] as const;
 const SUBJECT_FIELD: Record<string, 'korean' | 'english' | 'math' | 'science'> = {
@@ -27,6 +34,10 @@ interface RealCounseling {
 }
 interface RealReport { id: string; period: string; message: string | null; sentAt: string | null; viewedAt: string | null; createdAt: string; }
 interface RealStatusUpdate { overallReadiness: number | null; createdAt: string; }
+interface RealAppointment {
+  id: string; type: string; slot1: string; slot2: string; slot3: string;
+  status: string; confirmedSlot: string | null; createdAt: string;
+}
 interface Child {
   id: string; name: string; grade: string; school: string; enrolledMonths: number;
   finalGoalSchool: string | null; finalGoalDetail: string | null; finalGoalTrack: string | null;
@@ -37,6 +48,7 @@ interface Child {
   counselings: RealCounseling[];
   reports: RealReport[];
   statusUpdates: RealStatusUpdate[];
+  appointmentRequests: RealAppointment[];
 }
 
 function enrollmentPhrase(months: number): string {
@@ -108,10 +120,16 @@ function computeReadinessDelta(statusUpdates: RealStatusUpdate[], current: numbe
 
 export default function ParentPage() {
   const [parentName, setParentName] = useState('학부모');
+  const [childId, setChildId] = useState<string | null>(null);
   const [child, setChild] = useState<Child | null>(null);
   const [loading, setLoading] = useState(true);
   const [reportOpen, setReportOpen] = useState(false);
   const [openReportId, setOpenReportId] = useState<string | null>(null);
+  const [bookingType, setBookingType] = useState<'phone' | 'in_person' | null>(null);
+
+  const reloadChild = (id: string) => {
+    fetch(`/api/students/${id}`).then(r => r.json()).then(full => { if (!full.error) setChild(full); }).catch(() => {});
+  };
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(async me => {
@@ -120,6 +138,7 @@ export default function ParentPage() {
       const children = await fetch(`/api/students?parentId=${me.id}`).then(r => r.json());
       const first = Array.isArray(children) ? children[0] : null;
       if (!first) { setLoading(false); return; }
+      setChildId(first.id);
       const full = await fetch(`/api/students/${first.id}`).then(r => r.json());
       if (!full.error) setChild(full);
       setLoading(false);
@@ -403,11 +422,14 @@ export default function ParentPage() {
               <div className="text-xs text-slate-400 mb-5">궁금한 점이 있으시면 언제든 연락해 주세요</div>
               <div className="space-y-2.5">
                 {[
-                  { icon: MessageSquare, label: '메시지 보내기', sub: '평일 9시~21시 응답' },
-                  { icon: Phone, label: '상담 전화 예약', sub: '강사 일정 확인 후 연결' },
-                  { icon: Calendar, label: '대면 상담 예약', sub: '학원 방문 일정 조율' },
+                  { icon: Phone, label: '상담 전화 예약', sub: '강사 일정 확인 후 연결', type: 'phone' as const },
+                  { icon: Calendar, label: '대면 상담 예약', sub: '학원 방문 일정 조율', type: 'in_person' as const },
                 ].map((btn, i) => (
-                  <button key={i} className="w-full flex items-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg p-3 text-left transition-colors">
+                  <button
+                    key={i}
+                    onClick={() => setBookingType(btn.type)}
+                    className="w-full flex items-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg p-3 text-left transition-colors"
+                  >
                     <btn.icon size={14} className="text-amber-300" />
                     <div className="flex-1">
                       <div className="text-sm font-semibold">{btn.label}</div>
@@ -417,6 +439,24 @@ export default function ParentPage() {
                   </button>
                 ))}
               </div>
+              {child.appointmentRequests.length > 0 && (
+                <div className="mt-5 pt-4 border-t border-white/10">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">예약 요청 내역</div>
+                  <div className="space-y-1.5">
+                    {child.appointmentRequests.slice(0, 3).map(a => {
+                      const cfg = bookingStatusConfig[a.status] ?? bookingStatusConfig.pending;
+                      return (
+                        <div key={a.id} className="flex items-center justify-between text-[11px]">
+                          <div className="text-slate-300">
+                            {a.type === 'phone' ? '전화' : '대면'} · {a.status === 'confirmed' && a.confirmedSlot ? a.confirmedSlot : a.slot1}
+                          </div>
+                          <div className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${cfg.bg} ${cfg.text}`}>{cfg.label}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -430,6 +470,15 @@ export default function ParentPage() {
           studentId={child.id}
           reportId={openReportId ?? undefined}
           onClose={() => { setReportOpen(false); setOpenReportId(null); }}
+        />
+      )}
+      {bookingType && childId && (
+        <AppointmentRequestModal
+          studentId={childId}
+          type={bookingType}
+          requestedBy={parentName}
+          onClose={() => setBookingType(null)}
+          onSaved={() => reloadChild(childId)}
         />
       )}
     </div>

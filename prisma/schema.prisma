@@ -45,16 +45,16 @@ model FranchiseStandard {
 }
 
 model AdmissionSchool {
-  id         String                 @id @default(cuid())
+  id         String                @id @default(cuid())
   name       String
   dept       String?
   year       Int
-  typesCount Int                    @default(0)
-  status     AdmissionSchoolStatus  @default(DRAFT)
+  typesCount Int                   @default(0)
+  status     AdmissionSchoolStatus @default(DRAFT)
   updatedBy  String?
   source     String?
-  createdAt  DateTime               @default(now())
-  updatedAt  DateTime               @updatedAt
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
   tracks     AdmissionTrack[]
 }
 
@@ -79,20 +79,20 @@ model AdmissionTrack {
 }
 
 model User {
-  id               String       @id @default(cuid())
-  username         String?      @unique
+  id               String          @id @default(cuid())
+  username         String?         @unique
   passwordHash     String?
   name             String
-  email            String?      @unique
+  email            String?         @unique
   phone            String?
-  role             Role         @default(PENDING)
+  role             Role            @default(PENDING)
   branchId         String?
-  branch           Branch?      @relation(fields: [branchId], references: [id])
-  students         Student[]    @relation("InstructorStudents")
-  studentProfileId String?      @unique
-  studentProfile   Student?     @relation("StudentLogin", fields: [studentProfileId], references: [id])
-  children         Student[]    @relation("StudentParents")
-  createdAt        DateTime     @default(now())
+  branch           Branch?         @relation(fields: [branchId], references: [id])
+  students         Student[]       @relation("InstructorStudents")
+  studentProfileId String?         @unique
+  studentProfile   Student?        @relation("StudentLogin", fields: [studentProfileId], references: [id])
+  children         Student[]       @relation("StudentParents")
+  createdAt        DateTime        @default(now())
   pendingUser      PendingUser?
   scheduleEvents   ScheduleEvent[]
 }
@@ -128,37 +128,38 @@ model PendingUser {
 }
 
 model Student {
-  id               String                @id @default(cuid())
-  name             String
-  initial          String
-  grade            String
-  school           String
-  enrolledMonths   Int                   @default(0)
-  finalGoalSchool  String?
-  finalGoalDetail  String?
-  finalGoalTrack   String?
-  midGoalSchool    String?
-  midGoalDetail    String?
-  midGoalTrack     String?
-  daysUntilCSAT    Int?
-  daysUntilHS      Int?
-  overallReadiness Int?
-  peerAverage      Int?
-  roadmap          Json?
-  riskSignals      Json?
-  subjectTargets   Json?
-  instructorId     String
-  instructor       User                  @relation("InstructorStudents", fields: [instructorId], references: [id])
-  branchId         String
-  branch           Branch                @relation(fields: [branchId], references: [id])
-  mockExams        MockExam[]
-  counselings      Counseling[]
-  reports          Report[]
-  goalHistories    GoalHistory[]
-  statusUpdates    StudentStatusUpdate[]
-  loginUser        User?                 @relation("StudentLogin")
-  parents          User[]                @relation("StudentParents")
-  createdAt        DateTime              @default(now())
+  id                  String                @id @default(cuid())
+  name                String
+  initial             String
+  grade               String
+  school              String
+  enrolledMonths      Int                   @default(0)
+  finalGoalSchool     String?
+  finalGoalDetail     String?
+  finalGoalTrack      String?
+  midGoalSchool       String?
+  midGoalDetail       String?
+  midGoalTrack        String?
+  daysUntilCSAT       Int?
+  daysUntilHS         Int?
+  overallReadiness    Int?
+  peerAverage         Int?
+  roadmap             Json?
+  riskSignals         Json?
+  subjectTargets      Json?
+  instructorId        String
+  instructor          User                  @relation("InstructorStudents", fields: [instructorId], references: [id])
+  branchId            String
+  branch              Branch                @relation(fields: [branchId], references: [id])
+  mockExams           MockExam[]
+  counselings         Counseling[]
+  reports             Report[]
+  goalHistories       GoalHistory[]
+  statusUpdates       StudentStatusUpdate[]
+  loginUser           User?                 @relation("StudentLogin")
+  parents             User[]                @relation("StudentParents")
+  appointmentRequests AppointmentRequest[]
+  createdAt           DateTime              @default(now())
 }
 
 model StudentStatusUpdate {
@@ -230,4 +231,18 @@ model Report {
   sentAt    DateTime?
   viewedAt  DateTime?
   createdAt DateTime  @default(now())
+}
+
+model AppointmentRequest {
+  id            String   @id @default(cuid())
+  studentId     String
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type          String // "phone" | "in_person"
+  slot1         String
+  slot2         String
+  slot3         String
+  status        String   @default("pending") // pending | confirmed | declined
+  confirmedSlot String?
+  requestedBy   String?
+  createdAt     DateTime @default(now())
 }
