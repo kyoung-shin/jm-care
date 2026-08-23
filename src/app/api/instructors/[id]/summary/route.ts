@@ -16,6 +16,25 @@ function daysLeft(deadline: string): number | null {
   return Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+
+// 이번 주 월~금의 "MM.DD" 목록 (ScheduleEvent.date가 연도 없는 문자열이라 매주 계산)
+function thisWeekWeekdays(): { date: string; day: string }[] {
+  const today = new Date();
+  const dow = today.getDay();
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + mondayOffset);
+  return Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return {
+      date: `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`,
+      day: WEEKDAY_LABELS[d.getDay()],
+    };
+  });
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -62,8 +81,9 @@ export async function GET(
       };
     });
 
+  const weekdays = thisWeekWeekdays();
   const scheduleEvents = await prisma.scheduleEvent.findMany({
-    where: { instructorId: id },
+    where: { instructorId: id, date: { in: weekdays.map(w => w.date) } },
     orderBy: [{ date: 'asc' }, { time: 'asc' }],
   });
 
@@ -73,15 +93,15 @@ export async function GET(
     list.push(ev);
     scheduleByDate.set(ev.date, list);
   }
-  const schedule = Array.from(scheduleByDate.entries()).map(([date, items]) => ({
-    date,
-    day: items[0]?.day ?? '',
-    items: items.map(i => ({ time: i.time, type: i.type, label: i.label, urgent: i.urgent })),
+  const schedule = weekdays.map(w => ({
+    date: w.date,
+    day: w.day,
+    items: (scheduleByDate.get(w.date) ?? []).map(i => ({ id: i.id, time: i.time, type: i.type, label: i.label, urgent: i.urgent })),
   }));
 
-  const today = new Date();
-  const todayStr = `${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
-  const todayItems = scheduleEvents.filter(e => e.date === todayStr).length;
+  const now = new Date();
+  const todayStr = `${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`;
+  const todayItems = scheduleByDate.get(todayStr)?.length ?? 0;
   const urgentActions = actions.filter(a => a.status === 'overdue' || a.status === 'urgent').length;
 
   return NextResponse.json({

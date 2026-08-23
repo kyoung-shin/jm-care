@@ -12,6 +12,7 @@ import ReportModal from '@/components/modals/ReportModal';
 import StudentInputModal from '@/components/modals/StudentInputModal';
 import InstructorPickerModal from '@/components/modals/InstructorPickerModal';
 import StudentPickerModal from '@/components/modals/StudentPickerModal';
+import ScheduleEventModal from '@/components/modals/ScheduleEventModal';
 import Footer from '@/components/dashboard/Footer';
 import { statusConfig, actionStatusConfig, type CounselingRecord } from '@/lib/dummy-data';
 
@@ -44,7 +45,7 @@ interface AlertStudent {
 interface ScheduleDay {
   date: string;
   day: string;
-  items: { time: string; type: string; label: string; urgent: boolean }[];
+  items: { id: string; time: string; type: string; label: string; urgent: boolean }[];
 }
 
 interface Summary {
@@ -66,6 +67,7 @@ function InstructorPage() {
   const [reportStudentPickerOpen, setReportStudentPickerOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<RealStudent | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [counselingModal, setCounselingModal] = useState<{
     mode: 'new' | 'detail';
     prefill?: null;
@@ -121,6 +123,14 @@ function InstructorPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record),
       });
+      loadSummary();
+    } catch { /* best-effort */ }
+  };
+
+  const handleDeleteScheduleItem = async (eventId: string) => {
+    if (!instructorId) return;
+    try {
+      await fetch(`/api/instructors/${instructorId}/schedule/${eventId}`, { method: 'DELETE' });
       loadSummary();
     } catch { /* best-effort */ }
   };
@@ -296,8 +306,11 @@ function InstructorPage() {
       <div className="bg-white border border-stone-200 rounded-xl p-6 mb-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2"><Calendar size={14} className="text-slate-700" /><div className="serif-ko text-base font-bold text-slate-900">이번 주 일정</div></div>
+          <button onClick={() => setScheduleModalOpen(true)} className="text-[11px] px-2.5 py-1 border border-stone-300 rounded-lg hover:bg-stone-50 font-semibold text-slate-700">
+            + 일정 추가
+          </button>
         </div>
-        {summary.schedule.length === 0 ? (
+        {summary.schedule.every(day => day.items.length === 0) ? (
           <div className="text-xs text-slate-400 text-center py-6">등록된 일정이 없습니다</div>
         ) : (
           <div className="grid grid-cols-5 gap-3">
@@ -308,9 +321,16 @@ function InstructorPage() {
                   <div className="text-sm font-bold num mt-0.5">{day.date}</div>
                 </div>
                 <div className="p-2 space-y-1.5 min-h-[110px]">
-                  {day.items.map((item, j) => (
-                    <div key={j} className={`text-[10px] p-1.5 rounded ${item.urgent ? 'bg-red-50 border border-red-200' : 'bg-stone-50 border border-stone-200'}`}>
-                      <div className="flex items-center gap-1 mb-0.5">
+                  {day.items.map(item => (
+                    <div key={item.id} className={`group relative text-[10px] p-1.5 rounded ${item.urgent ? 'bg-red-50 border border-red-200' : 'bg-stone-50 border border-stone-200'}`}>
+                      <button
+                        onClick={() => handleDeleteScheduleItem(item.id)}
+                        className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 transition-opacity"
+                        title="삭제"
+                      >
+                        ×
+                      </button>
+                      <div className="flex items-center gap-1 mb-0.5 pr-2">
                         <span className={`font-bold num ${item.urgent ? 'text-red-700' : 'text-slate-700'}`}>{item.time}</span>
                         <span className={`text-[9px] px-1 py-0.5 rounded ${item.urgent ? 'bg-red-200 text-red-800' : 'bg-white text-slate-600 border border-stone-200'}`}>{item.type}</span>
                       </div>
@@ -373,6 +393,13 @@ function InstructorPage() {
           currentInstructorId={instructorId ?? undefined}
           onSelect={id => { setInstructorId(id); setSummary(null); setPickerOpen(false); }}
           onClose={() => setPickerOpen(false)}
+        />
+      )}
+      {scheduleModalOpen && instructorId && (
+        <ScheduleEventModal
+          instructorId={instructorId}
+          onClose={() => setScheduleModalOpen(false)}
+          onSaved={loadSummary}
         />
       )}
     </div>
