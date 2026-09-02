@@ -81,6 +81,7 @@ const DEFAULT_RISK_SIGNALS: StudentDetail['riskSignals'] = [
 function DirectorPage() {
   const [branchId, setBranchId] = useState<string | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
+  const [noStudents, setNoStudents] = useState(false);
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [counselingList, setCounselingList] = useState<CounselingRecord[]>([]);
   const [reportOpen, setReportOpen] = useState(false);
@@ -99,13 +100,12 @@ function DirectorPage() {
         setBranchId(me.branchId);
         const students = await fetch(`/api/students?branchId=${me.branchId}`).then(r => r.json());
         if (Array.isArray(students) && students.length > 0) {
-          const preferred = students.find((s: { id: string }) => s.id === 'student_minjun') ?? students[0];
-          setStudentId(preferred.id);
+          setStudentId(students[0].id);
         } else {
-          setStudentId('student_minjun');
+          setNoStudents(true);
         }
       })
-      .catch(() => setStudentId('student_minjun'));
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -150,6 +150,17 @@ function DirectorPage() {
       });
     } catch { /* best-effort */ }
   }, [studentId]);
+
+  if (noStudents) {
+    return (
+      <RoleGuard allowed={['DIRECTOR']}>
+        <div className="max-w-7xl mx-auto px-8 py-16 text-center text-sm text-slate-500">
+          등록된 학생이 없습니다.
+          <a href="/students/new" className="block mt-3 text-slate-900 font-semibold underline underline-offset-4">학생 등록하러 가기 →</a>
+        </div>
+      </RoleGuard>
+    );
+  }
 
   if (!student) {
     return (

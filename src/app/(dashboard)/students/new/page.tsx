@@ -8,29 +8,48 @@ export default function NewStudentPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [instructors, setInstructors] = useState<Array<{id: string, name: string}>>([]);
+  const [myBranchId, setMyBranchId] = useState<string | null>(null);
+  const [myBranchName, setMyBranchName] = useState<string | null>(null);
+  const [branches, setBranches] = useState<Array<{id: string, name: string}>>([]);
+  const [branchId, setBranchId] = useState('');
   const [form, setForm] = useState({
     name: '', initial: '', grade: '중1', school: '',
     finalGoalSchool: '', finalGoalDetail: '', finalGoalTrack: '',
     midGoalSchool: '', midGoalDetail: '', midGoalTrack: '',
-    instructorId: '', branchId: 'branch_wonjung',
+    instructorId: '',
   });
   const update = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
-    fetch('/api/users?role=INSTRUCTOR').then(r => r.json()).then(d => {
-      if (Array.isArray(d)) setInstructors(d.filter((u: any) => u.role === 'INSTRUCTOR'));
+    fetch('/api/auth/me').then(r => r.json()).then(me => {
+      if (me?.branchId) {
+        setMyBranchId(me.branchId);
+        setMyBranchName(me.branchName ?? null);
+        setBranchId(me.branchId);
+      } else {
+        fetch('/api/branches').then(r => r.json()).then(list => {
+          if (Array.isArray(list)) setBranches(list);
+        }).catch(() => {});
+      }
     }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const url = branchId ? `/api/users?role=INSTRUCTOR&branchId=${branchId}` : '/api/users?role=INSTRUCTOR';
+    fetch(url).then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setInstructors(d.filter((u: any) => u.role === 'INSTRUCTOR'));
+    }).catch(() => {});
+  }, [branchId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.instructorId) return;
+    if (!form.name || !form.instructorId || !branchId) return;
     setLoading(true);
     try {
       const res = await fetch('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, initial: form.name.charAt(0) }),
+        body: JSON.stringify({ ...form, branchId, initial: form.name.charAt(0) }),
       });
       if (res.ok) router.push('/director');
     } finally { setLoading(false); }
@@ -49,6 +68,17 @@ export default function NewStudentPage() {
         <div className="bg-white border border-stone-200 rounded-xl p-6">
           <div className="text-xs font-bold text-slate-700 mb-4 uppercase tracking-wider">기본 정보</div>
           <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">소속 지점 <span className="text-red-500">*</span></label>
+              {myBranchId ? (
+                <div className="w-full text-sm border border-stone-200 bg-stone-50 rounded-lg px-3 py-2.5 text-slate-600">{myBranchName ?? '소속 지점'}</div>
+              ) : (
+                <select value={branchId} onChange={e => setBranchId(e.target.value)} required className="w-full text-sm border border-stone-300 rounded-lg px-3 py-2.5 bg-white">
+                  <option value="">지점 선택</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              )}
+            </div>
             <div className="col-span-2">
               <label className="text-xs font-semibold text-slate-600 mb-1.5 block">학생 이름 <span className="text-red-500">*</span></label>
               <input value={form.name} onChange={e => update('name', e.target.value)} required className="w-full text-sm border border-stone-300 rounded-lg px-3 py-2.5" placeholder="김민준" />
@@ -93,7 +123,7 @@ export default function NewStudentPage() {
             </div>
           </div>
         </div>
-        <button type="submit" disabled={loading} className="w-full py-3 bg-slate-900 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-slate-800 disabled:opacity-50">
+        <button type="submit" disabled={loading || !branchId} className="w-full py-3 bg-slate-900 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-slate-800 disabled:opacity-50">
           <UserPlus size={16} /> {loading ? '등록 중...' : '학생 등록'}
         </button>
       </form>
