@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Upload, BarChart3 } from 'lucide-react';
 
-interface Exam { id: string; name: string; date: string; avg?: number; korean?: number; english?: number; math?: number; science?: number; student?: { name: string }; studentId: string; }
+interface Exam { id: string; name: string; date: string; avg?: number; korean?: number; english?: number; math?: number; social?: number; science?: number; student?: { name: string }; studentId: string; }
 
 export default function AdminExamsPage() {
   const [exams, setExams] = useState<Exam[]>([]);
@@ -26,14 +26,23 @@ export default function AdminExamsPage() {
     if (!file) return;
     const text = await file.text();
     const lines = text.trim().split('\n').slice(1);
-    // Expected columns: studentId,name,date,korean,english,math,science
+    // 컬럼: studentId,회차,날짜,국어,영어,수학,사회,과학(고등은 탐구)
+    // 사회는 초·중만 쓰므로 비워 두면 된다.
+    const toNum = (v?: string) => {
+      const n = parseFloat((v ?? '').trim());
+      return Number.isFinite(n) ? n : null;
+    };
     for (const line of lines) {
-      const [studentId, name, date, korean, english, math, science] = line.split(',');
+      const [studentId, name, date, korean, english, math, social, science] = line.split(',');
       if (!studentId || !name) continue;
-      const avg = [korean, english, math, science].map(Number).filter(n => !isNaN(n) && n > 0);
+      const scores = { korean: toNum(korean), english: toNum(english), math: toNum(math), social: toNum(social), science: toNum(science) };
+      const vals = Object.values(scores).filter((n): n is number => n !== null);
       await fetch(`/api/students/${studentId.trim()}/mock-exams`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), date: date.trim(), korean: parseFloat(korean), english: parseFloat(english), math: parseFloat(math), science: parseFloat(science), avg: avg.length ? avg.reduce((a,b) => a+b, 0)/avg.length : null }),
+        body: JSON.stringify({
+          name: name.trim(), date: (date ?? '').trim(), ...scores,
+          avg: vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : null,
+        }),
       });
     }
     alert('업로드 완료');
@@ -51,7 +60,8 @@ export default function AdminExamsPage() {
           <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-semibold hover:bg-slate-800">
             <Upload size={14} /> CSV 업로드
           </button>
-          <div className="text-[10px] text-slate-400 mt-1 text-right">studentId,회차,날짜,국어,영어,수학,과학</div>
+          <div className="text-[10px] text-slate-400 mt-1 text-right">studentId,회차,날짜,국어,영어,수학,사회,과학</div>
+          <div className="text-[10px] text-slate-400 text-right">고등은 사회를 비우고 마지막 칸에 탐구 점수를 넣으세요</div>
         </div>
       </div>
       <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
@@ -64,7 +74,8 @@ export default function AdminExamsPage() {
               <th className="px-4 py-3 text-center font-semibold">국어</th>
               <th className="px-4 py-3 text-center font-semibold">영어</th>
               <th className="px-4 py-3 text-center font-semibold">수학</th>
-              <th className="px-4 py-3 text-center font-semibold">과학</th>
+              <th className="px-4 py-3 text-center font-semibold">사회</th>
+              <th className="px-4 py-3 text-center font-semibold">과학·탐구</th>
               <th className="px-4 py-3 text-center font-semibold">종합</th>
             </tr>
           </thead>
@@ -74,7 +85,7 @@ export default function AdminExamsPage() {
                 <td className="px-4 py-3 num text-slate-600 whitespace-nowrap">{e.date}</td>
                 <td className="px-4 py-3 font-semibold text-slate-900">{e.student?.name}</td>
                 <td className="px-4 py-3 text-slate-600">{e.name}</td>
-                {[e.korean, e.english, e.math, e.science].map((v, i) => (
+                {[e.korean, e.english, e.math, e.social, e.science].map((v, i) => (
                   <td key={i} className="px-4 py-3 text-center num text-slate-700">{v ?? '—'}</td>
                 ))}
                 <td className="px-4 py-3 text-center num font-bold text-slate-900">{e.avg?.toFixed(1) ?? '—'}</td>

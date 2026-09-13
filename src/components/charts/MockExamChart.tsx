@@ -5,8 +5,8 @@ import {
   YAxis, XAxis, CartesianGrid, Tooltip,
 } from 'recharts';
 import { BarChart3 } from 'lucide-react';
-
-const SUBJECT_COLORS: Record<string, string> = { 국어: '#0f766e', 영어: '#2563eb', 수학: '#d97706', 과학: '#7c3aed' };
+import { subjectsForGrade } from '@/lib/subjects';
+import { computeScoreDomain, isWithinDomain } from '@/lib/chart-scale';
 
 export interface MockExamRow {
   id?: string;
@@ -16,6 +16,7 @@ export interface MockExamRow {
   korean?: number | null;
   english?: number | null;
   math?: number | null;
+  social?: number | null;
   science?: number | null;
   avg?: number | null;
   percentile?: string | null;
@@ -24,6 +25,8 @@ export interface MockExamRow {
 interface Props {
   mockExams: MockExamRow[];
   compact?: boolean;
+  /** 학년에 따라 표시 과목이 달라진다 (초·중 5과목 / 고 4과목) */
+  grade?: string | null;
 }
 
 function parsePercentile(p?: string | null): number | null {
@@ -32,10 +35,18 @@ function parsePercentile(p?: string | null): number | null {
   return m ? parseFloat(m[0]) : null;
 }
 
-export default function MockExamChart({ mockExams, compact = false }: Props) {
-  const chartData = mockExams.map(e => ({
-    name: e.name, date: e.date, 국어: e.korean, 영어: e.english, 수학: e.math, 과학: e.science, 종합: e.avg,
-  }));
+export default function MockExamChart({ mockExams, compact = false, grade }: Props) {
+  const subjects = subjectsForGrade(grade);
+
+  const chartData = mockExams.map(e => {
+    const row: Record<string, string | number | null | undefined> = { name: e.name, date: e.date, 종합: e.avg };
+    for (const s of subjects) row[s.label] = e[s.field];
+    return row;
+  });
+
+  // 실제 찍히는 점수에 맞춰 Y축을 좁혀 변화를 확대해 보여준다
+  const plotted = mockExams.flatMap(e => [...subjects.map(s => e[s.field]), e.avg]);
+  const { domain, ticks } = computeScoreDomain(plotted);
 
   const first = mockExams[0];
   const last = mockExams[mockExams.length - 1];
@@ -74,10 +85,10 @@ export default function MockExamChart({ mockExams, compact = false }: Props) {
           </div>
         </div>
         <div className="flex items-center gap-2 text-[10px]">
-          {Object.entries(SUBJECT_COLORS).map(([k, v]) => (
-            <div key={k} className="flex items-center gap-1">
-              <div className="w-2.5 h-0.5 rounded" style={{ background: v }} />
-              <span className="text-slate-600">{k}</span>
+          {subjects.map(s => (
+            <div key={s.label} className="flex items-center gap-1">
+              <div className="w-2.5 h-0.5 rounded" style={{ background: s.color }} />
+              <span className="text-slate-600">{s.label}</span>
             </div>
           ))}
           <div className="flex items-center gap-1">
@@ -102,11 +113,11 @@ export default function MockExamChart({ mockExams, compact = false }: Props) {
                   axisLine={{ stroke: '#d6d3d1' }}
                   tickLine={false}
                 />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis domain={domain} ticks={ticks} allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e7e5e4' }} />
-                <ReferenceLine y={90} stroke="#94a3b8" strokeDasharray="4 4" />
-                {Object.entries(SUBJECT_COLORS).map(([k, v]) => (
-                  <Line key={k} type="monotone" dataKey={k} stroke={v} strokeWidth={1.8} dot={{ r: 3 }} connectNulls />
+                {isWithinDomain(90, domain) && <ReferenceLine y={90} stroke="#94a3b8" strokeDasharray="4 4" />}
+                {subjects.map(s => (
+                  <Line key={s.label} type="monotone" dataKey={s.label} stroke={s.color} strokeWidth={1.8} dot={{ r: 3 }} connectNulls />
                 ))}
                 <Line type="monotone" dataKey="종합" stroke="#0f172a" strokeWidth={3} dot={{ r: 4, fill: '#0f172a' }} connectNulls />
               </LineChart>
@@ -119,10 +130,9 @@ export default function MockExamChart({ mockExams, compact = false }: Props) {
                 <thead className="bg-stone-50 text-[11px] text-slate-600">
                   <tr>
                     <th className="px-3 py-2.5 text-left font-semibold">회차 · 시험</th>
-                    <th className="px-3 py-2.5 text-center font-semibold">국어</th>
-                    <th className="px-3 py-2.5 text-center font-semibold">영어</th>
-                    <th className="px-3 py-2.5 text-center font-semibold">수학</th>
-                    <th className="px-3 py-2.5 text-center font-semibold">과학</th>
+                    {subjects.map(s => (
+                      <th key={s.field} className="px-3 py-2.5 text-center font-semibold">{s.label}</th>
+                    ))}
                     <th className="px-3 py-2.5 text-center font-semibold">종합</th>
                     <th className="px-3 py-2.5 text-center font-semibold">전국 위치</th>
                   </tr>
@@ -139,10 +149,9 @@ export default function MockExamChart({ mockExams, compact = false }: Props) {
                           </div>
                           <div className="text-[10px] text-slate-500">{e.fullName}</div>
                         </td>
-                        <td className="px-3 py-2.5 text-center num font-semibold text-slate-800">{e.korean ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-center num font-semibold text-slate-800">{e.english ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-center num font-semibold text-slate-800">{e.math ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-center num font-semibold text-slate-800">{e.science ?? '—'}</td>
+                        {subjects.map(s => (
+                          <td key={s.field} className="px-3 py-2.5 text-center num font-semibold text-slate-800">{e[s.field] ?? '—'}</td>
+                        ))}
                         <td className="px-3 py-2.5 text-center">
                           <span className="num font-black text-slate-900">{e.avg ?? '—'}</span>
                           {delta && (

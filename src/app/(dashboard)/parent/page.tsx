@@ -7,6 +7,8 @@ import {
   Calendar, MessageSquare, FileText, Phone, ChevronRight, Eye,
 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { subjectsForGrade } from '@/lib/subjects';
+import { computeScoreDomain } from '@/lib/chart-scale';
 import ReportModal from '@/components/modals/ReportModal';
 import AppointmentRequestModal from '@/components/modals/AppointmentRequestModal';
 import Footer from '@/components/dashboard/Footer';
@@ -18,14 +20,11 @@ const bookingStatusConfig: Record<string, { label: string; bg: string; text: str
   declined: { label: '조율 필요', bg: 'bg-red-500/20', text: 'text-red-300' },
 };
 
-const SUBJECTS = ['국어', '영어', '수학', '과학'] as const;
-const SUBJECT_FIELD: Record<string, 'korean' | 'english' | 'math' | 'science'> = {
-  국어: 'korean', 영어: 'english', 수학: 'math', 과학: 'science',
-};
 
 interface RealMockExam {
   id: string; name: string; date: string;
-  korean: number | null; english: number | null; math: number | null; science: number | null;
+  korean: number | null; english: number | null; math: number | null;
+  social: number | null; science: number | null;
   avg: number | null; percentile: string | null;
 }
 interface RealCounseling {
@@ -68,12 +67,11 @@ function relativeTimeKo(dateStr: string): string {
   return `${months}개월 전 작성`;
 }
 
-function computeGrowth(mockExams: RealMockExam[]) {
+function computeGrowth(mockExams: RealMockExam[], grade?: string | null) {
   if (mockExams.length < 2) return null;
   const first = mockExams[0];
   const last = mockExams[mockExams.length - 1];
-  const perSubject = SUBJECTS.map(name => {
-    const field = SUBJECT_FIELD[name];
+  const perSubject = subjectsForGrade(grade).map(({ label: name, field }) => {
     const a = first[field];
     const b = last[field];
     if (a == null || b == null) return null;
@@ -89,10 +87,9 @@ function computeGrowth(mockExams: RealMockExam[]) {
   };
 }
 
-function computeSubjectStatus(mockExams: RealMockExam[], subjectTargets: Record<string, number> | null) {
+function computeSubjectStatus(mockExams: RealMockExam[], subjectTargets: Record<string, number> | null, grade?: string | null) {
   const latest = mockExams[mockExams.length - 1];
-  return SUBJECTS.map(name => {
-    const field = SUBJECT_FIELD[name];
+  return subjectsForGrade(grade).map(({ label: name, field }) => {
     const current = latest?.[field] ?? null;
     const target = subjectTargets?.[name] ?? null;
     const gap = current !== null && target !== null ? current - target : null;
@@ -165,12 +162,14 @@ export default function ParentPage() {
 
   const sentReports = child.reports.filter(r => r.sentAt);
   const latestReport = sentReports[0] ?? null;
-  const growth = computeGrowth(child.mockExams);
-  const subjectRows = computeSubjectStatus(child.mockExams, child.subjectTargets);
+  const growth = computeGrowth(child.mockExams, child.grade);
+  const subjectRows = computeSubjectStatus(child.mockExams, child.subjectTargets, child.grade);
   const readinessDelta = computeReadinessDelta(child.statusUpdates, child.overallReadiness);
   const promiseItems = child.counselings.filter(c => c.actionName && c.actionName !== '(액션 미설정)').slice(0, 4);
   const parentCounselings = child.counselings.filter(c => c.parentShare && c.parentShare.trim()).slice(0, 4);
   const chartData = child.mockExams.map(e => ({ name: e.name, avg: e.avg }));
+  // 종합 백분위 추이도 실제 점수 구간만 확대해서 보여준다
+  const { domain: avgDomain, ticks: avgTicks } = computeScoreDomain(child.mockExams.map(e => e.avg));
 
   return (
     <RoleGuard allowed={['PARENT', 'DIRECTOR']}>
@@ -276,7 +275,7 @@ export default function ParentPage() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: -20 }}>
                         <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                        <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                        <YAxis domain={avgDomain} ticks={avgTicks} allowDecimals={false} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
                         <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
                         <Line type="monotone" dataKey="avg" name="종합 백분위" stroke="#059669" strokeWidth={2.5} dot={{ r: 4, fill: '#059669' }} />
                       </LineChart>

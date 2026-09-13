@@ -7,7 +7,10 @@ import {
   Check, Edit3, Clock, Target, CheckCircle2,
 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
-import { subjectColors, statusConfig, actionStatusConfig } from '@/lib/dummy-data';
+import { statusConfig, actionStatusConfig } from '@/lib/dummy-data';
+import { buildReportModel, formatPeriodLabel } from '@/lib/report-data';
+import { subjectsForGrade } from '@/lib/subjects';
+import { computeScoreDomain, isWithinDomain } from '@/lib/chart-scale';
 
 interface Props {
   mode: 'director' | 'parent';
@@ -25,6 +28,7 @@ interface RealMockExam {
   korean: number | null;
   english: number | null;
   math: number | null;
+  social: number | null;
   science: number | null;
   avg: number | null;
   percentile: string | null;
@@ -54,16 +58,6 @@ interface RealStudentData {
   branch: { name: string } | null;
   mockExams: RealMockExam[];
   counselings: RealCounseling[];
-}
-
-const SUBJECTS = ['국어', '영어', '수학', '과학'] as const;
-const SUBJECT_FIELD: Record<string, 'korean' | 'english' | 'math' | 'science'> = {
-  국어: 'korean', 영어: 'english', 수학: 'math', 과학: 'science',
-};
-
-function formatPeriodLabel(dateStr: string): string {
-  const m = dateStr.match(/(\d{4})\.(\d{2})/);
-  return m ? `${m[1]}년 ${Number(m[2])}월` : dateStr;
 }
 
 function formatGeneratedAt(d: Date): string {
@@ -135,13 +129,12 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
   }, [isDirector, studentId, reportId]);
 
   // 상단에서 선택한 시점(=모의고사 회차)까지의 데이터로 리포트를 구성. 아직 선택하지 않았다면 최신 회차 기준.
-  const examCount = realStudent?.mockExams.length ?? 0;
-  const effectiveExamIdx = selectedExamIdx >= 0 && selectedExamIdx < examCount ? selectedExamIdx : examCount - 1;
-  const visibleExams = realStudent?.mockExams.slice(0, effectiveExamIdx + 1) ?? [];
-  const firstExam = visibleExams[0];
-  const latestExam = visibleExams[visibleExams.length - 1];
-  const hasGrowthRange = !!(firstExam && latestExam && firstExam !== latestExam);
-  const period = isDirector ? (latestExam ? formatPeriodLabel(latestExam.date) : '') : parentPeriod;
+  // 수치 계산은 PDF 출력과 공유하는 buildReportModel 에서만 한다.
+  const model = realStudent ? buildReportModel(realStudent, selectedExamIdx) : null;
+  const effectiveExamIdx = model?.effectiveExamIdx ?? -1;
+  const visibleExams = model?.visibleExams ?? [];
+  const period = isDirector ? (model?.period ?? '') : parentPeriod;
+  const subjectDefs = subjectsForGrade(realStudent?.grade);
 
   const handleSend = async () => {
     if (!studentId) { setSendError('발송 대상 학생 정보를 찾을 수 없습니다'); return; }
@@ -199,73 +192,27 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
     }
   };
 
-  const chartData = visibleExams.map(e => ({
-    name: e.name, 국어: e.korean, 영어: e.english, 수학: e.math, 과학: e.science, avg: e.avg,
-  }));
-
-  const growthStats = (() => {
-    const percentile = latestExam?.percentile ?? '데이터 없음';
-    const percentileDelta = hasGrowthRange && firstExam?.percentile ? `${firstExam.percentile}에서 변화` : '';
-
-    const avgValue = latestExam?.avg === null || latestExam?.avg === undefined
-      ? '데이터 없음'
-      : hasGrowthRange && firstExam?.avg != null ? `${firstExam.avg} → ${latestExam.avg}` : `${latestExam.avg}`;
-    const avgDelta = hasGrowthRange && firstExam?.avg != null && latestExam?.avg != null
-      ? `${latestExam.avg - firstExam.avg >= 0 ? '+' : ''}${(latestExam.avg - firstExam.avg).toFixed(1)}`
-      : '';
-
-    let bestSubject: { label: string; delta: string } = { label: '데이터 부족', delta: '모의고사 2회 이상 필요' };
-    if (hasGrowthRange && firstExam && latestExam) {
-      let best: { name: string; delta: number } | null = null;
-      for (const name of SUBJECTS) {
-        const field = SUBJECT_FIELD[name];
-        const a = firstExam[field];
-        const b = latestExam[field];
-        if (a === null || b === null) continue;
-        const d = b - a;
-        if (!best || d > best.delta) best = { name, delta: d };
-      }
-      if (best) {
-        bestSubject = {
-          label: `${best.name} ${best.delta >= 0 ? '+' : ''}${best.delta}`,
-          delta: `${firstExam[SUBJECT_FIELD[best.name]]} → ${latestExam[SUBJECT_FIELD[best.name]]}`,
-        };
-      } else {
-        bestSubject = { label: '데이터 없음', delta: '' };
-      }
-    }
-
-    return [
-      { label: '종합 백분위', value: avgValue, delta: avgDelta },
-      { label: '전국 위치', value: percentile, delta: percentileDelta },
-      { label: '최고 성장 과목', value: bestSubject.label, delta: bestSubject.delta },
-    ];
-  })();
-
-  const subjectRows = SUBJECTS.map(name => {
-    const field = SUBJECT_FIELD[name];
-    const current = latestExam?.[field] ?? null;
-    const target = realStudent?.subjectTargets?.[name] ?? null;
-    const gap = current !== null && target !== null ? +(current - target).toFixed(1) : null;
-    const status: keyof typeof statusConfig | null = gap === null ? null : gap >= 0 ? 'good' : gap >= -3 ? 'close' : gap >= -7 ? 'lacking' : 'risk';
-    const note = target === null
-      ? '목표 점수가 설정되지 않았습니다.'
-      : current === null
-      ? '등록된 모의고사 성적이 없습니다.'
-      : status === 'good' ? '목표를 충족했습니다. 현 수준을 유지해 주세요.'
-      : status === 'close' ? '목표에 근접했습니다. 꾸준한 관리로 충족 가능합니다.'
-      : status === 'lacking' ? '목표 대비 격차가 있습니다. 보강이 필요합니다.'
-      : '목표 대비 격차가 큽니다. 집중 보강이 시급합니다.';
-    return { name, current, target, status, note };
+  const chartData = visibleExams.map(e => {
+    const row: Record<string, string | number | null> = { name: e.name, avg: e.avg };
+    for (const s of subjectDefs) row[s.label] = e[s.field];
+    return row;
   });
+
+  // 실제 점수 구간에 맞춰 Y축을 좁혀 변화가 드러나게 한다
+  const plotted = visibleExams.flatMap(e => [
+    e.avg,
+    ...(includeGrades ? subjectDefs.map(s => e[s.field]) : []),
+  ]);
+  const { domain: scoreDomain, ticks: scoreTicks } = computeScoreDomain(plotted);
+
+  const growthStats = model?.stats ?? [];
+  const subjectRows = model?.subjects ?? [];
 
   const displayName = realStudent?.name ?? studentName ?? '학생';
   const instructorName = realStudent?.instructor?.name ?? '담임 강사';
   const branchName = realStudent?.branch?.name ?? '';
 
-  const actionItems = (realStudent?.counselings ?? [])
-    .filter(c => c.actionName && c.actionName !== '(액션 미설정)')
-    .slice(0, 6);
+  const actionItems = realStudent?.counselings.filter(c => c.actionName && c.actionName !== '(액션 미설정)').slice(0, 6) ?? [];
 
   return (
     <div className="fixed inset-0 z-50 ko-sans">
@@ -397,12 +344,12 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                               <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" vertical={false} />
                                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                <YAxis domain={scoreDomain} ticks={scoreTicks} allowDecimals={false} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
                                 <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
-                                <ReferenceLine y={90} stroke="#94a3b8" strokeDasharray="4 4" />
+                                {isWithinDomain(90, scoreDomain) && <ReferenceLine y={90} stroke="#94a3b8" strokeDasharray="4 4" />}
                                 <Line type="monotone" dataKey="avg" name="종합" stroke="#0f172a" strokeWidth={3} dot={{ r: 4 }} />
-                                {includeGrades && Object.entries(subjectColors).map(([k, v]) => (
-                                  <Line key={k} type="monotone" dataKey={k} stroke={v} strokeWidth={1.4} dot={{ r: 2.5 }} />
+                                {includeGrades && subjectDefs.map(sd => (
+                                  <Line key={sd.label} type="monotone" dataKey={sd.label} stroke={sd.color} strokeWidth={1.4} dot={{ r: 2.5 }} />
                                 ))}
                               </LineChart>
                             </ResponsiveContainer>

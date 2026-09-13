@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X, Target, Activity, TrendingUp, Map, Save } from 'lucide-react';
+import { subjectsForGrade, averageOfSubjects, type SubjectField } from '@/lib/subjects';
 
 interface Props {
   studentId: string;
@@ -11,10 +12,6 @@ interface Props {
   onSaved?: () => void;
 }
 
-const SUBJECTS = ['국어', '영어', '수학', '과학'] as const;
-const SUBJECT_FIELD: Record<string, 'korean' | 'english' | 'math' | 'science'> = {
-  국어: 'korean', 영어: 'english', 수학: 'math', 과학: 'science',
-};
 const GRADE_SEQUENCE = ['초1', '초2', '초3', '초4', '초5', '초6', '중1', '중2', '중3', '고1', '고2', '고3'];
 function stagesFromGrade(grade?: string): string[] {
   const idx = grade ? GRADE_SEQUENCE.indexOf(grade) : -1;
@@ -26,6 +23,8 @@ const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2 fo
 
 export default function StudentInputModal({ studentId, studentName, grade, onClose, onSaved }: Props) {
   const ROADMAP_STAGES = stagesFromGrade(grade);
+  // 입력 과목은 학년에 따라 달라진다 (초·중 5과목 / 고 4과목)
+  const subjects = subjectsForGrade(grade);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
@@ -89,13 +88,12 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
 
       // 2. 최근 점수 (새 모의고사 — additive)
       if (addExam && exam.name.trim() && exam.date.trim()) {
-        const scores = SUBJECTS.reduce((acc, s) => {
-          const v = examScores[s];
-          if (v && v.trim()) acc[SUBJECT_FIELD[s]] = Number(v);
+        const scores = subjects.reduce((acc, sd) => {
+          const v = examScores[sd.label];
+          if (v && v.trim()) acc[sd.field] = Number(v);
           return acc;
-        }, {} as Record<string, number>);
-        const scoreValues = Object.values(scores);
-        const avg = scoreValues.length > 0 ? +(scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length).toFixed(1) : undefined;
+        }, {} as Partial<Record<SubjectField, number>>);
+        const avg = averageOfSubjects(scores, grade) ?? undefined;
         const res = await fetch(`/api/students/${studentId}/mock-exams`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -105,9 +103,9 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
       }
 
       // 3. 준비도/과목목표/로드맵/위험신호 — additive status-update
-      const subjectTargets = SUBJECTS.reduce((acc, s) => {
-        const v = targets[s];
-        if (v && v.trim()) acc[s] = Number(v);
+      const subjectTargets = subjects.reduce((acc, sd) => {
+        const v = targets[sd.label];
+        if (v && v.trim()) acc[sd.label] = Number(v);
         return acc;
       }, {} as Record<string, number>);
 
@@ -198,11 +196,11 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
             {/* 과목별 목표점수 + 최근점수 */}
             <section>
               <div className="flex items-center gap-2 mb-3"><TrendingUp size={14} className="text-slate-700" /><div className="text-sm font-bold text-slate-900">과목별 목표점수</div></div>
-              <div className="grid grid-cols-4 gap-3 mb-4">
-                {SUBJECTS.map(s => (
-                  <div key={s}>
-                    <label className="text-[11px] text-slate-500 mb-1 block">{s} 목표</label>
-                    <input className={inputCls} type="number" value={targets[s] ?? ''} onChange={e => setTargets(t => ({ ...t, [s]: e.target.value }))} />
+              <div className={`grid gap-3 mb-4 ${subjects.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                {subjects.map(sd => (
+                  <div key={sd.field}>
+                    <label className="text-[11px] text-slate-500 mb-1 block">{sd.label} 목표</label>
+                    <input className={inputCls} type="number" value={targets[sd.label] ?? ''} onChange={e => setTargets(t => ({ ...t, [sd.label]: e.target.value }))} />
                   </div>
                 ))}
               </div>
@@ -218,11 +216,11 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
                     <input className={inputCls} placeholder="날짜 (예: 2026.05.16)" value={exam.date} onChange={e => setExam(x => ({ ...x, date: e.target.value }))} />
                     <input className={inputCls} placeholder="시험명" value={exam.fullName} onChange={e => setExam(x => ({ ...x, fullName: e.target.value }))} />
                   </div>
-                  <div className="grid grid-cols-4 gap-3">
-                    {SUBJECTS.map(s => (
-                      <div key={s}>
-                        <label className="text-[11px] text-slate-500 mb-1 block">{s} 점수</label>
-                        <input className={inputCls} type="number" value={examScores[s] ?? ''} onChange={e => setExamScores(x => ({ ...x, [s]: e.target.value }))} />
+                  <div className={`grid gap-3 ${subjects.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                    {subjects.map(sd => (
+                      <div key={sd.field}>
+                        <label className="text-[11px] text-slate-500 mb-1 block">{sd.label} 점수</label>
+                        <input className={inputCls} type="number" value={examScores[sd.label] ?? ''} onChange={e => setExamScores(x => ({ ...x, [sd.label]: e.target.value }))} />
                       </div>
                     ))}
                   </div>

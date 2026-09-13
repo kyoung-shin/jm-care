@@ -82,6 +82,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
       stats: model.stats,
       subjects: model.subjects,
+      subjectDefs: model.subjectDefs,
       exams: model.visibleExams,
       actions: model.actions,
       message,

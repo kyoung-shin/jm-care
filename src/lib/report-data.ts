@@ -1,9 +1,6 @@
 // 리포트 본문 계산. 화면(ReportModal)과 PDF 출력이 같은 값을 쓰도록 여기서만 계산한다.
 
-export const REPORT_SUBJECTS = ['국어', '영어', '수학', '과학'] as const;
-export const SUBJECT_FIELD: Record<string, 'korean' | 'english' | 'math' | 'science'> = {
-  국어: 'korean', 영어: 'english', 수학: 'math', 과학: 'science',
-};
+import { subjectsForGrade, type SubjectField } from '@/lib/subjects';
 
 export interface ReportExamSource {
   id?: string;
@@ -12,6 +9,7 @@ export interface ReportExamSource {
   korean: number | null;
   english: number | null;
   math: number | null;
+  social: number | null;
   science: number | null;
   avg: number | null;
   percentile: string | null;
@@ -50,6 +48,8 @@ export function formatPeriodLabel(dateStr: string): string {
 }
 
 export function buildReportModel(student: ReportStudentSource, selectedExamIdx = -1) {
+  // 표시 과목은 학년으로 결정된다 (초·중 5과목 / 고 4과목)
+  const subjects = subjectsForGrade(student.grade);
   const examCount = student.mockExams.length;
   const effectiveExamIdx = selectedExamIdx >= 0 && selectedExamIdx < examCount ? selectedExamIdx : examCount - 1;
   const visibleExams = student.mockExams.slice(0, effectiveExamIdx + 1);
@@ -69,19 +69,18 @@ export function buildReportModel(student: ReportStudentSource, selectedExamIdx =
 
   let bestSubject: { label: string; delta: string } = { label: '데이터 부족', delta: '모의고사 2회 이상 필요' };
   if (hasGrowthRange && firstExam && latestExam) {
-    let best: { name: string; delta: number } | null = null;
-    for (const name of REPORT_SUBJECTS) {
-      const field = SUBJECT_FIELD[name];
-      const a = firstExam[field];
-      const b = latestExam[field];
-      if (a === null || b === null) continue;
+    let best: { name: string; field: SubjectField; delta: number } | null = null;
+    for (const s of subjects) {
+      const a = firstExam[s.field];
+      const b = latestExam[s.field];
+      if (a === null || a === undefined || b === null || b === undefined) continue;
       const delta = b - a;
-      if (!best || delta > best.delta) best = { name, delta };
+      if (!best || delta > best.delta) best = { name: s.label, field: s.field, delta };
     }
     bestSubject = best
       ? {
           label: `${best.name} ${best.delta >= 0 ? '+' : ''}${best.delta}`,
-          delta: `${firstExam[SUBJECT_FIELD[best.name]]} → ${latestExam[SUBJECT_FIELD[best.name]]}`,
+          delta: `${firstExam[best.field]} → ${latestExam[best.field]}`,
         }
       : { label: '데이터 없음', delta: '' };
   }
@@ -92,8 +91,7 @@ export function buildReportModel(student: ReportStudentSource, selectedExamIdx =
     { label: '최고 성장 과목', value: bestSubject.label, delta: bestSubject.delta },
   ];
 
-  const subjects = REPORT_SUBJECTS.map(name => {
-    const field = SUBJECT_FIELD[name];
+  const subjectRows = subjects.map(({ label: name, field }) => {
     const current = latestExam?.[field] ?? null;
     const target = student.subjectTargets?.[name] ?? null;
     const gap = current !== null && target !== null ? +(current - target).toFixed(1) : null;
@@ -119,5 +117,8 @@ export function buildReportModel(student: ReportStudentSource, selectedExamIdx =
       status: ACTION_STATUS_LABEL[c.actionStatus] ?? c.actionStatus,
     }));
 
-  return { period, effectiveExamIdx, visibleExams, firstExam, latestExam, hasGrowthRange, stats, subjects, actions };
+  return {
+    period, effectiveExamIdx, visibleExams, firstExam, latestExam, hasGrowthRange,
+    stats, subjects: subjectRows, subjectDefs: subjects, actions,
+  };
 }

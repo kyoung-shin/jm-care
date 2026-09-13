@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PDFDocument, PDFFont, PDFPage, rgb, RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
+import type { SubjectDef } from '@/lib/subjects';
 
 // pdf-lib 의 subset:true 는 CJK 글리프를 깨뜨리므로 폰트를 통째로 임베드한다.
 // 대신 Bold 는 싣지 않고 같은 글자를 미세하게 겹쳐 찍어 굵기를 낸다(용량 절반).
@@ -38,6 +39,7 @@ export interface ReportExam {
   korean: number | null;
   english: number | null;
   math: number | null;
+  social: number | null;
   science: number | null;
   avg: number | null;
   percentile: string | null;
@@ -60,6 +62,8 @@ export interface ReportInput {
   goal: { school: string; detail: string; track: string; daysUntilCSAT: number | null };
   stats: Array<{ label: string; value: string; delta: string }>;
   subjects: ReportSubject[];
+  /** 학년에 따라 달라지는 표시 과목 (초·중 5과목 / 고 4과목) */
+  subjectDefs: SubjectDef[];
   exams: ReportExam[];
   actions: ReportAction[];
   message: string;
@@ -231,21 +235,30 @@ export async function buildReportPdf(data: ReportInput): Promise<Uint8Array> {
   // ── 모의고사 추이 ──────────────────────────────────────────
   if (data.includeGrades && data.exams.length > 0) {
     d.sectionTitle('모의고사 추이');
-    const ec = [
-      { t: '회차', x: 0 }, { t: '국어', x: 150 }, { t: '영어', x: 200 },
-      { t: '수학', x: 250 }, { t: '과학', x: 300 }, { t: '평균', x: 355 }, { t: '전국', x: 410 },
-    ];
+    // 과목 수(4~5개)에 따라 열 간격을 나눠 잡는다
+    const firstCol = 140;
+    const colGap = (CONTENT_W - firstCol - 60) / (data.subjectDefs.length + 1);
+    const subjectX = data.subjectDefs.map((_, i) => firstCol + colGap * i);
+    const avgX = firstCol + colGap * data.subjectDefs.length;
+    const pctX = avgX + colGap;
+
     const ehY = d.y - 10;
-    ec.forEach(c => d.draw(c.t, M + c.x, ehY, 8, MUTED, true));
+    d.draw('회차', M, ehY, 8, MUTED, true);
+    data.subjectDefs.forEach((sd, i) => d.draw(sd.label, M + subjectX[i], ehY, 8, MUTED, true));
+    d.draw('평균', M + avgX, ehY, 8, MUTED, true);
+    d.draw('전국', M + pctX, ehY, 8, MUTED, true);
     d.y = ehY - 6;
     d.rule();
     for (const e of data.exams) {
       d.ensure(20);
       const y = d.y - 11;
       d.draw(e.name || e.date, M, y, 9, INK);
-      const vals = [e.korean, e.english, e.math, e.science, e.avg];
-      vals.forEach((v, i) => d.draw(v === null ? '-' : String(v), M + ec[i + 1].x, y, 9, i === 4 ? INK : MUTED, i === 4));
-      d.draw(e.percentile ?? '-', M + 410, y, 8.5, MUTED);
+      data.subjectDefs.forEach((sd, i) => {
+        const v = e[sd.field];
+        d.draw(v === null || v === undefined ? '-' : String(v), M + subjectX[i], y, 9, MUTED);
+      });
+      d.draw(e.avg === null ? '-' : String(e.avg), M + avgX, y, 9, INK, true);
+      d.draw(e.percentile ?? '-', M + pctX, y, 8.5, MUTED);
       d.y = y - 7;
       d.rule(rgb(0.93, 0.92, 0.91));
     }

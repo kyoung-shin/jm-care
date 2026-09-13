@@ -186,6 +186,8 @@ model MockExam {
   korean     Float?
   english    Float?
   math       Float?
+  social     Float?
+  // 초·중은 '과학', 고등은 '탐구'로 표시한다 (src/lib/subjects.ts)
   science    Float?
   avg        Float?
   percentile String?

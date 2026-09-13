@@ -1,23 +1,34 @@
 'use client';
-import { useState, use } from 'react';
+import { useState, use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, BarChart3 } from 'lucide-react';
+import { subjectsForGrade, averageOfSubjects, type SubjectField } from '@/lib/subjects';
 
 export default function NewExamPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
+  const [grade, setGrade] = useState<string | null>(null);
+  const [studentName, setStudentName] = useState('');
+  const [form, setForm] = useState<Record<string, string>>({
     name: '', date: '', fullName: '',
-    korean: '', english: '', math: '', science: '',
+    korean: '', english: '', math: '', social: '', science: '',
   });
   const update = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
 
-  const avg = (['korean','english','math','science'] as const)
-    .map(k => parseFloat(form[k]))
-    .filter(n => !isNaN(n));
-  const avgVal = avg.length > 0 ? (avg.reduce((a, b) => a + b, 0) / avg.length).toFixed(1) : '';
+  // 학년에 따라 입력 과목이 달라진다 (초·중 5과목 / 고 4과목)
+  useEffect(() => {
+    fetch(`/api/students/${id}`).then(r => r.json()).then(d => {
+      if (!d?.error) { setGrade(d.grade ?? null); setStudentName(d.name ?? ''); }
+    }).catch(() => {});
+  }, [id]);
+
+  const subjects = subjectsForGrade(grade);
+  const scores = Object.fromEntries(
+    subjects.map(s => [s.field, form[s.field] ? parseFloat(form[s.field]) : null])
+  ) as Partial<Record<SubjectField, number | null>>;
+  const avgVal = averageOfSubjects(scores, grade);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,11 +39,13 @@ export default function NewExamPage({ params }: { params: Promise<{ id: string }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: form.name, date: form.date, fullName: form.fullName,
-          korean: form.korean ? parseFloat(form.korean) : null,
-          english: form.english ? parseFloat(form.english) : null,
-          math: form.math ? parseFloat(form.math) : null,
-          science: form.science ? parseFloat(form.science) : null,
-          avg: avgVal ? parseFloat(avgVal) : null,
+          // 해당 학년에서 쓰지 않는 과목은 null 로 비워 둔다
+          korean: scores.korean ?? null,
+          english: scores.english ?? null,
+          math: scores.math ?? null,
+          social: scores.social ?? null,
+          science: scores.science ?? null,
+          avg: avgVal,
         }),
       });
       if (res.ok) router.back();
@@ -66,16 +79,24 @@ export default function NewExamPage({ params }: { params: Promise<{ id: string }
           </div>
         </div>
         <div className="bg-white border border-stone-200 rounded-xl p-6">
-          <div className="text-xs font-bold text-slate-700 mb-4">과목별 백분위 점수</div>
+          <div className="flex items-baseline justify-between mb-4">
+            <div className="text-xs font-bold text-slate-700">과목별 백분위 점수</div>
+            <div className="text-[11px] text-slate-500">
+              {grade ? `${studentName ? studentName + ' · ' : ''}${grade} 과정 ${subjects.length}과목` : '학년 확인 중...'}
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-4">
-            {[['korean','국어'],['english','영어'],['math','수학'],['science','과학']].map(([k, label]) => (
-              <div key={k}>
-                <label className="text-xs font-semibold text-slate-600 mb-1.5 block">{label}</label>
-                <input type="number" min="0" max="100" value={form[k as keyof typeof form]} onChange={e => update(k, e.target.value)} placeholder="0–100" className="w-full text-sm border border-stone-300 rounded-lg px-3 py-2.5 num" />
+            {subjects.map(s => (
+              <div key={s.field}>
+                <label className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
+                  {s.label}
+                </label>
+                <input type="number" min="0" max="100" value={form[s.field]} onChange={e => update(s.field, e.target.value)} placeholder="0–100" className="w-full text-sm border border-stone-300 rounded-lg px-3 py-2.5 num" />
               </div>
             ))}
           </div>
-          {avgVal && (
+          {avgVal !== null && (
             <div className="mt-4 pt-4 border-t border-stone-100 flex items-center gap-2">
               <BarChart3 size={13} className="text-slate-500" />
               <span className="text-xs text-slate-600">자동 평균: <span className="num font-bold text-slate-900">{avgVal}</span></span>

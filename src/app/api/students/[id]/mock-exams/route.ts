@@ -25,8 +25,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const body = await req.json();
+    // 클라이언트가 보낸 임의 필드를 그대로 쓰지 않고 허용 칸만 저장한다
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
     const exam = await prisma.mockExam.create({
-      data: { ...body, studentId: id },
+      data: {
+        studentId: id,
+        name: String(body.name ?? ''),
+        date: String(body.date ?? ''),
+        fullName: body.fullName ? String(body.fullName) : null,
+        korean: num(body.korean),
+        english: num(body.english),
+        math: num(body.math),
+        social: num(body.social),
+        science: num(body.science),
+        avg: num(body.avg),
+        percentile: body.percentile ? String(body.percentile) : null,
+      },
     });
     return NextResponse.json(exam, { status: 201 });
   } catch (error) {

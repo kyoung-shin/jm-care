@@ -15,12 +15,9 @@ import ReportModal from '@/components/modals/ReportModal';
 import StudentPickerModal from '@/components/modals/StudentPickerModal';
 import Footer from '@/components/dashboard/Footer';
 import { statusConfig, actionStatusConfig, type CounselingRecord } from '@/lib/dummy-data';
+import { subjectsForGrade } from '@/lib/subjects';
+import { computeScoreDomain } from '@/lib/chart-scale';
 
-const SUBJECT_NAMES = ['국어', '영어', '수학', '과학'] as const;
-type SubjectName = (typeof SUBJECT_NAMES)[number];
-const SUBJECT_FIELD: Record<SubjectName, 'korean' | 'english' | 'math' | 'science'> = {
-  국어: 'korean', 영어: 'english', 수학: 'math', 과학: 'science',
-};
 
 interface StudentDetail {
   id: string;
@@ -41,14 +38,14 @@ interface StudentDetail {
   peerAverage: number | null;
   roadmap: RoadmapStep[] | null;
   riskSignals: { label: string; value: string; detail: string; tone: 'good' | 'risk' }[] | null;
-  subjectTargets: Partial<Record<SubjectName, number>> | null;
+  subjectTargets: Partial<Record<string, number>> | null;
   instructor: { id: string; name: string } | null;
   mockExams: MockExamRow[];
   goalHistories: { id: string; date: string; label: string; target: string; track: string; reason: string | null; isCurrent: boolean }[];
 }
 
 interface ComputedSubject {
-  name: SubjectName;
+  name: string;
   current: number | null;
   target: number | null;
   gap: number | null;
@@ -57,10 +54,14 @@ interface ComputedSubject {
   trend: number[];
 }
 
-function computeSubjects(mockExams: MockExamRow[], subjectTargets: Partial<Record<SubjectName, number>> | null): ComputedSubject[] {
+function computeSubjects(
+  mockExams: MockExamRow[],
+  subjectTargets: Partial<Record<string, number>> | null,
+  grade?: string | null,
+): ComputedSubject[] {
   const latest = mockExams[mockExams.length - 1];
-  return SUBJECT_NAMES.map(name => {
-    const field = SUBJECT_FIELD[name];
+  // 표시 과목은 학년에 따라 달라진다 (초·중 5과목 / 고 4과목)
+  return subjectsForGrade(grade).map(({ label: name, field }) => {
     const trend = mockExams.map(e => e[field]).filter((v): v is number => typeof v === 'number');
     const current = latest?.[field] ?? null;
     const target = subjectTargets?.[name] ?? null;
@@ -170,7 +171,7 @@ function DirectorPage() {
     );
   }
 
-  const subjects = computeSubjects(student.mockExams, student.subjectTargets);
+  const subjects = computeSubjects(student.mockExams, student.subjectTargets, student.grade);
   const worstTwo = [...subjects]
     .filter(s => s.gap !== null)
     .sort((a, b) => (a.gap ?? 0) - (b.gap ?? 0))
@@ -280,7 +281,7 @@ function DirectorPage() {
       </div>
 
       <Roadmap roadmap={student.roadmap} daysUntilCSAT={student.daysUntilCSAT} daysUntilHS={student.daysUntilHS} finalGoalSchool={student.finalGoalSchool} studentGrade={student.grade} />
-      <MockExamChart mockExams={student.mockExams} />
+      <MockExamChart mockExams={student.mockExams} grade={student.grade} />
 
       {/* 핵심 4과목 */}
       <div className="bg-white border border-stone-200 rounded-xl p-6 mb-4">
@@ -311,7 +312,7 @@ function DirectorPage() {
                 <div className="h-12 -mx-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={s.trend.map((v, i) => ({ v, i }))}>
-                      <YAxis hide domain={[0, 100]} />
+                      <YAxis hide domain={computeScoreDomain([...s.trend, s.target]).domain} />
                       <Line type="monotone" dataKey="v" stroke={cfg?.stroke ?? '#94a3b8'} strokeWidth={2.2} dot={false} />
                       {s.target !== null && <ReferenceLine y={s.target} stroke="#94a3b8" strokeDasharray="3 3" strokeWidth={1} />}
                     </LineChart>
