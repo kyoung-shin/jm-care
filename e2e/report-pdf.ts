@@ -259,6 +259,18 @@ async function run(fx: Fixture, browser: Browser) {
   const listed = await (await dp.request.get(`${BASE}/api/students`)).json();
   ok('원장 목록은 본인 지점만', Array.isArray(listed) && listed.every((s: { branchId: string }) => s.branchId === fx.branchId), `${Array.isArray(listed) ? listed.length : '?'}건`);
 
+  // 회원 명부 — 지점 범위 + 비밀번호 해시 미노출
+  const staff = await (await dp.request.get(`${BASE}/api/users?role=INSTRUCTOR`)).json();
+  ok('원장이 보는 강사 명부는 본인 지점만',
+    Array.isArray(staff) && staff.length > 0 && staff.every((u: { branchId: string }) => u.branchId === fx.branchId),
+    `${Array.isArray(staff) ? staff.length : '?'}건`);
+  ok('회원 명부 응답에 passwordHash 없음',
+    Array.isArray(staff) && staff.every((u: Record<string, unknown>) => !('passwordHash' in u)),
+    Array.isArray(staff) && staff[0] ? Object.keys(staff[0]).join(',') : '');
+  // 다른 지점 branchId 를 넘겨도 범위를 벗어나지 못한다
+  const crossBranch = await (await dp.request.get(`${BASE}/api/users?branchId=branch_wonjung`)).json();
+  ok('원장이 다른 지점 branchId 로 조회 → 결과 없음', Array.isArray(crossBranch) && crossBranch.length === 0, `${Array.isArray(crossBranch) ? crossBranch.length : '?'}건`);
+
   await dirCtx.close();
 
   console.log('\n[학부모] /parent — 버튼 1 "PDF로 저장", 버튼 3 "PDF 저장"');
@@ -340,6 +352,9 @@ async function run(fx: Fixture, browser: Browser) {
     data: { name: '무단', date: '2026.01.01', korean: 100 },
   });
   ok('학부모가 자녀 성적 등록 시도 → 403', writeAttempt.status() === 403, `status=${writeAttempt.status()}`);
+
+  const dirList = await pp.request.get(`${BASE}/api/users?role=INSTRUCTOR`);
+  ok('학부모가 회원 명부 조회 → 403', dirList.status() === 403, `status=${dirList.status()}`);
 
   await parCtx.close();
 }
