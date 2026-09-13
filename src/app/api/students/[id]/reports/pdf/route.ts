@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionUserId } from '@/lib/auth';
+import { authorizeStudentAccess } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { buildReportModel } from '@/lib/report-data';
 import { buildReportPdf } from '@/server/report-pdf';
@@ -26,13 +26,15 @@ function sanitizeFilenamePart(s: string) {
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userId = await getSessionUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const { id } = await params;
+
+  // 로그인 여부만이 아니라 이 학생에 접근할 권한이 있는지까지 확인한다
+  const access = await authorizeStudentAccess(id);
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
+
   const sp = req.nextUrl.searchParams;
   const examIdx = sp.get('examIdx') !== null ? Number(sp.get('examIdx')) : -1;
-  const includeGrades = sp.get('includeGrades') !== '0';
+  let includeGrades = sp.get('includeGrades') !== '0';
   const reportId = sp.get('reportId');
 
   try {
@@ -54,7 +56,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     };
     const model = buildReportModel(source, Number.isFinite(examIdx) ? examIdx : -1);
 
-    // 발송된 리포트를 여는 경우 저장된 기간/메시지를 우선 사용한다
+    // 발송된 리포트를 여는 경우 저장된 기간/메시지/공개 범위를 그대로 따른다.
+    // 원장이 백분위를 빼고 발송했다면 학부모가 받는 PDF 에도 숫자가 들어가면 안 된다.
     let period = model.period;
     let message = '';
     if (reportId) {
@@ -62,6 +65,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if (report) {
         period = report.period || period;
         message = report.message ?? '';
+        includeGrades = report.includeGrades;
       }
     }
 

@@ -159,6 +159,8 @@ export async function buildReportPdf(data: ReportInput): Promise<Uint8Array> {
   pdf.setTitle(`${data.studentName} 학습 리포트 ${data.period}`.trim());
   pdf.setAuthor(data.branchName || 'JM-CARE');
   pdf.setCreator('JM-CARE');
+  // 공개 범위를 문서 속성에 남겨 둔다 (파일 속성에서 확인 가능)
+  pdf.setSubject(data.includeGrades ? '학습 리포트 · 백분위 포함' : '학습 리포트 · 백분위 비공개');
 
   // ── 표지 헤더 ──────────────────────────────────────────────
   d.text('JM-CARE', { size: 9, color: ACCENT, bold: true, dy: 2 });

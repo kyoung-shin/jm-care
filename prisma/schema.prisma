@@ -230,6 +230,8 @@ model Report {
   student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   period    String
   message   String?
+  // 발송 시 원장이 고른 "구체적 백분위 포함" 여부. 학부모 화면·PDF 가 이 값을 따른다.
+  includeGrades Boolean @default(true)
   sentAt    DateTime?
   viewedAt  DateTime?
   createdAt DateTime  @default(now())

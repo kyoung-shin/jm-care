@@ -15,6 +15,7 @@
  * DATABASE_URL 이 가리키는 DB 에 쓰기가 발생하니 운영 DB 로 돌릴 때는 유의할 것.
  */
 import { chromium, type Browser, type Page, type BrowserContext } from 'playwright';
+import { PDFDocument } from 'pdf-lib';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -62,7 +63,14 @@ const login = (j: Jar, username: string, password = PW) =>
   api(j, '/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
 
 interface PendingRow { userId: string; name: string }
-interface Fixture { branchId: string; studentId: string; dirU: string; parU: string }
+interface Fixture {
+  branchId: string;
+  studentId: string;
+  dirU: string;
+  parU: string;
+  /** 다른 지점 학생 — 권한 차단 확인용 */
+  otherStudentId: string | null;
+}
 
 async function createFixture(): Promise<Fixture> {
   const adminUser = process.env.ADMIN_USERNAME;
@@ -122,14 +130,25 @@ async function createFixture(): Promise<Fixture> {
   const parPending = (queue.data as PendingRow[]).find(p => p.name === 'E2E학부모')!;
   await api(dir, `/api/director/users/${parPending.userId}/approve`, { method: 'POST', body: JSON.stringify({ studentIds: [studentId] }) });
 
-  // 학부모 화면에서 열람할 발송 리포트
+  // 학부모 화면에서 열람할 발송 리포트 2건 — 공개 범위를 다르게 저장한다
   await api(dir, `/api/students/${studentId}/reports`, { method: 'POST', body: JSON.stringify({
     period: '2026년 3월',
     message: 'E2E민준 학부모님, 담임 강사입니다. 이번 학기 성장 내용을 정리했습니다.',
+    includeGrades: true,
+    sentAt: new Date().toISOString(),
+  }) });
+  await api(dir, `/api/students/${studentId}/reports`, { method: 'POST', body: JSON.stringify({
+    period: '2025년 12월',
+    message: '백분위 비공개로 발송한 리포트입니다.',
+    includeGrades: false,
     sentAt: new Date().toISOString(),
   }) });
 
-  return { branchId, studentId, dirU, parU };
+  // 권한 차단 확인에 쓸 다른 지점 학생
+  const all = await api(admin, '/api/students');
+  const other = (all.data as { id: string; branchId: string }[] | null)?.find(s => s.branchId !== branchId) ?? null;
+
+  return { branchId, studentId, dirU, parU, otherStudentId: other?.id ?? null };
 }
 
 // 'ZZ_자동검증_' 지점과 거기 딸린 계정·학생·가입신청만 지운다
@@ -168,7 +187,7 @@ async function signIn(ctx: BrowserContext, username: string): Promise<Page> {
   return page;
 }
 
-async function clickAndExpectPdf(page: Page, selector: ReturnType<Page['getByRole']>, label: string) {
+async function clickAndExpectPdf(page: Page, selector: ReturnType<Page['getByRole']>, label: string): Promise<string | null> {
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 90_000 }),
     selector.first().click(),
@@ -182,6 +201,7 @@ async function clickAndExpectPdf(page: Page, selector: ReturnType<Page['getByRol
   ok(`${label} → PDF 다운로드`, valid, `헤더=${buf.subarray(0, 5).toString('latin1')}`);
   ok(`${label} → 파일명에 학생명·기간 포함`, /E2E민준/.test(name) && /\d{4}년/.test(name), name);
   console.log(`        ${name}  ${(buf.length / 1024).toFixed(0)}KB`);
+  return valid ? dest : null;
 }
 
 // ── 본 시나리오 ────────────────────────────────────────────
@@ -240,19 +260,55 @@ async function run(fx: Fixture, browser: Browser) {
   await shot(pp, 'parent-dashboard');
 
   await pp.locator('text=월간 리포트').scrollIntoViewIfNeeded();
-  const open = pp.getByRole('button', { name: /열기/ }).first();
-  ok('학부모 화면에 리포트 "열기" 노출', await open.count() > 0);
-  await open.click();
+  ok('학부모 화면에 리포트 "열기" 노출', await pp.getByRole('button', { name: /열기/ }).count() > 0);
+  // 백분위를 포함해 발송한 리포트를 지목해서 연다
+  await pp.locator('text=2026년 3월 학습 리포트').click();
   await pp.waitForTimeout(2500);
   await shot(pp, 'parent-modal');
 
   const btn1 = pp.getByRole('button', { name: /PDF로 저장/ });
   ok('버튼 1 (헤더) "PDF로 저장" 존재', await btn1.count() > 0);
-  if (await btn1.count() > 0) await clickAndExpectPdf(pp, btn1, '버튼 1 (학부모 헤더)');
+  const gradedPdf = await clickAndExpectPdf(pp, btn1, '버튼 1 (학부모 헤더)');
 
   const btn3 = pp.getByRole('button', { name: /^PDF 저장$/ });
   ok('버튼 3 (하단) "PDF 저장" 존재', await btn3.count() > 0);
   if (await btn3.count() > 0) await clickAndExpectPdf(pp, btn3, '버튼 3 (학부모 하단)');
+
+  // ── 발송 시 고른 "백분위 제외" 가 학부모 PDF 에도 적용되는지 ──
+  console.log('\n[학부모] 백분위 제외로 발송한 리포트');
+  await pp.getByRole('button', { name: /^확인$/ }).first().click();
+  await pp.waitForTimeout(1000);
+  await pp.locator('text=2025년 12월 학습 리포트').scrollIntoViewIfNeeded();
+  await pp.locator('text=2025년 12월 학습 리포트').click();
+  await pp.waitForTimeout(2500);
+  await shot(pp, 'parent-modal-no-grades');
+  const noGradesPdf = await clickAndExpectPdf(pp, pp.getByRole('button', { name: /^PDF 저장$/ }), '백분위 제외 리포트');
+  if (noGradesPdf && gradedPdf) {
+    const subjectOf = async (f: string) => (await PDFDocument.load(fs.readFileSync(f))).getSubject() ?? '';
+    const noGradesSubject = await subjectOf(noGradesPdf);
+    const gradedSubject = await subjectOf(gradedPdf);
+    ok(
+      '백분위 포함으로 발송한 리포트 → PDF 도 백분위 포함',
+      gradedSubject.includes('백분위 포함'),
+      gradedSubject,
+    );
+    ok(
+      '백분위 제외로 발송한 리포트 → 학부모 PDF 도 백분위 비공개',
+      noGradesSubject.includes('비공개'),
+      noGradesSubject,
+    );
+  }
+
+  // ── 다른 지점 학생 리포트는 막혀야 한다 ──
+  if (fx.otherStudentId) {
+    const res = await pp.request.get(`${BASE}/api/students/${fx.otherStudentId}/reports/pdf`);
+    ok('학부모가 다른 지점 학생 PDF 요청 → 403 차단', res.status() === 403, `status=${res.status()}`);
+  } else {
+    console.log('        (다른 지점 학생이 없어 권한 차단 검사는 건너뜀)');
+  }
+  const notFound = await pp.request.get(`${BASE}/api/students/does-not-exist/reports/pdf`);
+  ok('없는 학생 → 404', notFound.status() === 404, `status=${notFound.status()}`);
+
   await parCtx.close();
 }
 

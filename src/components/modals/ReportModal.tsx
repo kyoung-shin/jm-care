@@ -130,11 +130,13 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
   // 학부모 모드: 실제 리포트 내용(기간/메시지)을 불러오고, 조회 시각을 기록
   useEffect(() => {
     if (isDirector || !studentId || !reportId) return;
-    fetch(`/api/students/${studentId}/reports`).then(r => r.json()).then((reports: { id: string; period: string; message: string | null }[]) => {
+    fetch(`/api/students/${studentId}/reports`).then(r => r.json()).then((reports: { id: string; period: string; message: string | null; includeGrades?: boolean }[]) => {
       const real = Array.isArray(reports) ? reports.find(r => r.id === reportId) : null;
       if (real) {
         setParentPeriod(real.period);
         if (real.message) setMessage(real.message);
+        // 원장이 발송 시 고른 공개 범위를 학부모 화면에도 그대로 적용한다
+        setIncludeGrades(real.includeGrades !== false);
       }
     }).catch(() => {});
     fetch(`/api/students/${studentId}/reports/${reportId}/view`, { method: 'POST' }).catch(() => {});
@@ -157,7 +159,7 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
       const res = await fetch(`/api/students/${studentId}/reports`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ period, message, sentAt: now.toISOString() }),
+        body: JSON.stringify({ period, message, includeGrades, sentAt: now.toISOString() }),
       });
       if (!res.ok) throw new Error('발송에 실패했습니다');
       setSentAt(now);

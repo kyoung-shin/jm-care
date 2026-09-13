@@ -30,6 +30,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         studentId: id,
         period: body.period,
         message: body.message,
+        // 발송 시 고른 공개 범위를 저장해 두어야 학부모 화면·PDF 가 같은 기준을 쓴다
+        includeGrades: body.includeGrades !== false,
         sentAt: body.sentAt ? new Date(body.sentAt) : null,
       },
     });
