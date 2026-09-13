@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionUserId } from '@/lib/auth';
+import { authorizeStudentAccess, studentAccessError, writeForbidden } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { getCurrentAppUser } from '@/lib/auth';
 
 // 초1~고3을 0~11 단계로 매핑 (한국 학제 기준)
 const GRADE_INDEX: Record<string, number> = {
@@ -36,8 +35,8 @@ function estimateDday(grade: string | null): { daysUntilCSAT: number | null; day
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userId = await getSessionUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await authorizeStudentAccess((await params).id);
+  if (!access.ok) return studentAccessError(access);
 
   const { id } = await params;
   try {
@@ -64,8 +63,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = await getSessionUserId();
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const access = await authorizeStudentAccess((await params).id);
+    if (!access.ok) return studentAccessError(access);
+    if (!access.canWrite) return writeForbidden();
     const { id } = await params;
     const data = await req.json();
     const student = await prisma.student.update({ where: { id }, data });
@@ -77,9 +77,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const caller = await getCurrentAppUser();
-    if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (!['ADMIN', 'DIRECTOR'].includes(caller.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const access = await authorizeStudentAccess((await params).id);
+    if (!access.ok) return studentAccessError(access);
+    // 삭제는 본사·원장만, 그리고 접근 범위 안의 학생에 한한다
+    if (!['ADMIN', 'DIRECTOR'].includes(access.user.role)) {
+      return NextResponse.json({ error: '학생을 삭제할 권한이 없습니다' }, { status: 403 });
+    }
     const { id } = await params;
     await prisma.student.delete({ where: { id } });
     return NextResponse.json({ success: true });

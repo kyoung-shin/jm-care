@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getCurrentAppUser } from '@/lib/auth';
+import { authorizeStudentAccess, studentAccessError, writeForbidden } from '@/lib/auth';
 import type { Prisma } from '@/generated/prisma/client';
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const caller = await getCurrentAppUser();
-  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await authorizeStudentAccess((await params).id);
+  if (!access.ok) return studentAccessError(access);
 
   const { id } = await params;
   const updates = await prisma.studentStatusUpdate.findMany({
@@ -23,18 +23,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const caller = await getCurrentAppUser();
-    if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (!['ADMIN', 'DIRECTOR', 'INSTRUCTOR'].includes(caller.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const access = await authorizeStudentAccess((await params).id);
+    if (!access.ok) return studentAccessError(access);
+    if (!access.canWrite) return writeForbidden();
 
     const { id } = await params;
     const { overallReadiness, peerAverage, subjectTargets, roadmap, riskSignals, enrolledMonths, note } = await req.json();
 
     const entry: Prisma.StudentStatusUpdateCreateInput = {
       student: { connect: { id } },
-      createdBy: caller.name,
+      createdBy: access.user.name,
     };
     const mirror: Prisma.StudentUpdateInput = {};
 

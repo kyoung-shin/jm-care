@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { SESSION_COOKIE, verifySessionToken } from '@/lib/session';
 
@@ -23,8 +24,16 @@ type StudentScope = {
 };
 
 export type StudentAccess =
-  | { ok: true; user: NonNullable<Awaited<ReturnType<typeof getCurrentAppUser>>>; student: StudentScope }
+  | {
+      ok: true;
+      user: NonNullable<Awaited<ReturnType<typeof getCurrentAppUser>>>;
+      student: StudentScope;
+      /** 학생 기록을 수정할 수 있는 직원인지 (본사·원장·강사) */
+      canWrite: boolean;
+    }
   | { ok: false; status: 401 | 403 | 404; error: string };
+
+const STAFF_ROLES = ['ADMIN', 'DIRECTOR', 'INSTRUCTOR'];
 
 /**
  * 한 학생의 정보에 접근할 수 있는지 판정한다.
@@ -66,5 +75,38 @@ export async function authorizeStudentAccess(studentId: string): Promise<Student
   }
 
   if (!allowed) return { ok: false, status: 403, error: '이 학생의 정보를 볼 권한이 없습니다' };
-  return { ok: true, user, student };
+  return { ok: true, user, student, canWrite: STAFF_ROLES.includes(user.role) };
+}
+
+/** 권한 판정 실패를 그대로 응답으로 바꾼다 */
+export function studentAccessError(access: Extract<StudentAccess, { ok: false }>) {
+  return NextResponse.json({ error: access.error }, { status: access.status });
+}
+
+/** 학생 기록 수정 권한이 없을 때의 응답 */
+export function writeForbidden() {
+  return NextResponse.json({ error: '학생 기록을 수정할 권한이 없습니다' }, { status: 403 });
+}
+
+/**
+ * 학생 목록 조회에 씌울 범위 조건.
+ * 호출자가 볼 수 있는 학생만 남기고, 화면이 넘긴 필터는 그 위에 얹는다.
+ * null 을 돌려주면 볼 수 있는 학생이 없다는 뜻이다.
+ */
+export function studentListScope(
+  user: NonNullable<Awaited<ReturnType<typeof getCurrentAppUser>>>
+): Record<string, unknown> | null {
+  switch (user.role) {
+    case 'ADMIN':
+      return {};
+    case 'DIRECTOR':
+    case 'INSTRUCTOR':
+      return user.branchId ? { branchId: user.branchId } : null;
+    case 'PARENT':
+      return { parents: { some: { id: user.id } } };
+    case 'STUDENT':
+      return user.studentProfileId ? { id: user.studentProfileId } : null;
+    default:
+      return null;
+  }
 }

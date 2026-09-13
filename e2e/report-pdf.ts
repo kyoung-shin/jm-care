@@ -241,7 +241,8 @@ async function run(fx: Fixture, browser: Browser) {
 
   const btn2 = dp.getByRole('button', { name: /PDF 내려받기/ });
   ok('버튼 2 "PDF 내려받기" 존재', await btn2.count() > 0);
-  await clickAndExpectPdf(dp, btn2, '버튼 2 (최신 회차)');
+  const gradedByDirector = await clickAndExpectPdf(dp, btn2, '버튼 2 (최신 회차)');
+  void gradedByDirector;
 
   // 회차를 1차로 바꾸면 다른 기간의 PDF 가 나와야 한다
   const picker = dp.locator('select').first();
@@ -250,6 +251,14 @@ async function run(fx: Fixture, browser: Browser) {
     await dp.waitForTimeout(1200);
     await clickAndExpectPdf(dp, btn2, '버튼 2 (1차 회차 선택)');
   }
+  // 원장은 본인 지점 밖으로 나갈 수 없다 — 다른 지점 branchId 를 넘겨도 교집합만 나온다
+  if (fx.otherStudentId) {
+    const leak = await dp.request.get(`${BASE}/api/students/${fx.otherStudentId}`);
+    ok('원장이 다른 지점 학생 조회 → 403', leak.status() === 403, `status=${leak.status()}`);
+  }
+  const listed = await (await dp.request.get(`${BASE}/api/students`)).json();
+  ok('원장 목록은 본인 지점만', Array.isArray(listed) && listed.every((s: { branchId: string }) => s.branchId === fx.branchId), `${Array.isArray(listed) ? listed.length : '?'}건`);
+
   await dirCtx.close();
 
   console.log('\n[학부모] /parent — 버튼 1 "PDF로 저장", 버튼 3 "PDF 저장"');
@@ -308,6 +317,29 @@ async function run(fx: Fixture, browser: Browser) {
   }
   const notFound = await pp.request.get(`${BASE}/api/students/does-not-exist/reports/pdf`);
   ok('없는 학생 → 404', notFound.status() === 404, `status=${notFound.status()}`);
+
+  // ── /api/students/* 전체 스코핑 ──
+  console.log('\n[권한] 학부모 세션으로 본 /api/students/*');
+  const mine = await (await pp.request.get(`${BASE}/api/students`)).json();
+  ok('학생 목록에 본인 자녀만 보임', Array.isArray(mine) && mine.length === 1 && mine[0].id === fx.studentId, `${Array.isArray(mine) ? mine.length : '?'}건`);
+
+  if (fx.otherStudentId) {
+    for (const [label, p] of [
+      ['상세', `/api/students/${fx.otherStudentId}`],
+      ['모의고사', `/api/students/${fx.otherStudentId}/mock-exams`],
+      ['상담', `/api/students/${fx.otherStudentId}/counselings`],
+      ['리포트', `/api/students/${fx.otherStudentId}/reports`],
+    ] as [string, string][]) {
+      const r = await pp.request.get(BASE + p);
+      ok(`다른 지점 학생 ${label} 조회 → 403`, r.status() === 403, `status=${r.status()}`);
+    }
+  }
+
+  // 자녀 기록이라도 학부모는 쓰기 불가
+  const writeAttempt = await pp.request.post(`${BASE}/api/students/${fx.studentId}/mock-exams`, {
+    data: { name: '무단', date: '2026.01.01', korean: 100 },
+  });
+  ok('학부모가 자녀 성적 등록 시도 → 403', writeAttempt.status() === 403, `status=${writeAttempt.status()}`);
 
   await parCtx.close();
 }

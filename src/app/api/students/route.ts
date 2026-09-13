@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionUserId } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { getCurrentAppUser } from '@/lib/auth';
+import { getCurrentAppUser, studentListScope } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
-  const userId = await getSessionUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const caller = await getCurrentAppUser();
+  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // 화면이 넘긴 필터 위에 호출자가 볼 수 있는 범위를 반드시 겹쳐 씌운다
+  const scope = studentListScope(caller);
+  if (scope === null) return NextResponse.json([]);
 
   const { searchParams } = new URL(req.url);
   const instructorId = searchParams.get('instructorId');
@@ -14,10 +17,17 @@ export async function GET(req: NextRequest) {
 
   try {
     const students = await prisma.student.findMany({
+      // AND 로 묶어야 화면이 넘긴 필터가 범위 조건을 덮어쓰지 못한다
+      // (예: 원장이 다른 지점 branchId 를 넘겨도 본인 지점 교집합만 나온다)
       where: {
-        ...(instructorId ? { instructorId } : {}),
-        ...(branchId ? { branchId } : {}),
-        ...(parentId ? { parents: { some: { id: parentId } } } : {}),
+        AND: [
+          scope,
+          {
+            ...(instructorId ? { instructorId } : {}),
+            ...(branchId ? { branchId } : {}),
+            ...(parentId ? { parents: { some: { id: parentId } } } : {}),
+          },
+        ],
       },
       include: {
         instructor: { select: { id: true, name: true } },

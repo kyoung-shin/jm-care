@@ -1,4 +1,4 @@
-import { getSessionUserId } from '@/lib/auth';
+import { authorizeStudentAccess, studentAccessError, writeForbidden } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
@@ -7,8 +7,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; counselingId: string }> }
 ) {
   try {
-    const userId = await getSessionUserId();
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const access = await authorizeStudentAccess((await params).id);
+    if (!access.ok) return studentAccessError(access);
+    if (!access.canWrite) return writeForbidden();
     const { counselingId } = await params;
     const data = await req.json();
     const updated = await prisma.counseling.update({ where: { id: counselingId }, data });
@@ -23,8 +24,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; counselingId: string }> }
 ) {
   try {
-    const userId = await getSessionUserId();
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const access = await authorizeStudentAccess((await params).id);
+    if (!access.ok) return studentAccessError(access);
+    if (!access.canWrite) return writeForbidden();
     const { counselingId } = await params;
     await prisma.counseling.delete({ where: { id: counselingId } });
     return NextResponse.json({ success: true });

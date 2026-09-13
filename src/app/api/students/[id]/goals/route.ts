@@ -1,4 +1,4 @@
-import { getSessionUserId } from '@/lib/auth';
+import { authorizeStudentAccess, studentAccessError, writeForbidden } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
@@ -7,8 +7,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = await getSessionUserId();
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const access = await authorizeStudentAccess((await params).id);
+    if (!access.ok) return studentAccessError(access);
     const { id } = await params;
     const histories = await prisma.goalHistory.findMany({
       where: { studentId: id },
@@ -25,8 +25,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = await getSessionUserId();
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const access = await authorizeStudentAccess((await params).id);
+    if (!access.ok) return studentAccessError(access);
+    if (!access.canWrite) return writeForbidden();
     const { id } = await params;
     const { finalGoalSchool, finalGoalDetail, finalGoalTrack, midGoalSchool, midGoalDetail, midGoalTrack, reason } = await req.json();
 
