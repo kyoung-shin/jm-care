@@ -105,6 +105,8 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
   );
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [pdfError, setPdfError] = useState('');
   const [sentAt, setSentAt] = useState<Date | null>(null);
   const [generatedAt] = useState(() => new Date());
 
@@ -160,6 +162,40 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
       setSendError(e instanceof Error ? e.message : '발송에 실패했습니다');
     } finally {
       setSending(false);
+    }
+  };
+
+  // 리포트 PDF 내려받기. 화면에서 고른 회차·옵션을 그대로 서버에 넘긴다.
+  const handleDownloadPdf = async () => {
+    if (!studentId) { setPdfError('학생 정보를 찾을 수 없습니다'); return; }
+    setDownloading(true);
+    setPdfError('');
+    try {
+      const qs = new URLSearchParams({
+        examIdx: String(effectiveExamIdx),
+        includeGrades: includeGrades ? '1' : '0',
+      });
+      if (reportId) qs.set('reportId', reportId);
+      const res = await fetch(`/api/students/${studentId}/reports/pdf?${qs}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'PDF 생성에 실패했습니다');
+      }
+      const blob = await res.blob();
+      const name = `JM-CARE_학습리포트_${displayName}${period ? `_${period}` : ''}.pdf`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // 다운로드가 시작될 시간을 준 뒤 해제
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      setPdfError(e instanceof Error ? e.message : 'PDF 생성에 실패했습니다');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -261,8 +297,12 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                 </select>
               )}
               {!isDirector && (
-                <button className="text-xs px-3 py-1.5 bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1">
-                  <Printer size={11} /> 인쇄
+                <button
+                  onClick={handleDownloadPdf}
+                  disabled={downloading}
+                  className="text-xs px-3 py-1.5 bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1 disabled:opacity-50"
+                >
+                  <Printer size={11} /> {downloading ? '생성 중...' : 'PDF로 저장'}
                 </button>
               )}
               <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-stone-200 flex items-center justify-center text-slate-600"><X size={16} /></button>
@@ -492,8 +532,8 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
           {isDirector && step === 'review' && (
             <div className="border-t border-stone-200 bg-white px-6 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                {sendError ? (
-                  <span className="text-red-600 font-semibold">{sendError}</span>
+                {sendError || pdfError ? (
+                  <span className="text-red-600 font-semibold">{sendError || pdfError}</span>
                 ) : (
                   <>
                     <CheckCircle2 size={12} className="text-emerald-600" />
@@ -504,6 +544,13 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
               <div className="flex items-center gap-2">
                 <button onClick={onClose} className="px-4 py-2 text-xs text-slate-700 hover:bg-stone-100 rounded">취소</button>
                 <button className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5"><Eye size={12} /> 학부모 화면 미리보기</button>
+                <button
+                  onClick={handleDownloadPdf}
+                  disabled={downloading}
+                  className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Download size={12} /> {downloading ? '생성 중...' : 'PDF 내려받기'}
+                </button>
                 <button
                   onClick={handleSend}
                   disabled={sending}
@@ -517,9 +564,19 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
 
           {!isDirector && (
             <div className="border-t border-stone-200 bg-white px-6 py-4 flex items-center justify-between shrink-0">
-              <div className="text-[11px] text-slate-500">자녀 정보만 노출되며 내부 운영 메모는 표시되지 않습니다</div>
+              <div className="text-[11px] text-slate-500">
+                {pdfError
+                  ? <span className="text-red-600 font-semibold">{pdfError}</span>
+                  : '자녀 정보만 노출되며 내부 운영 메모는 표시되지 않습니다'}
+              </div>
               <div className="flex items-center gap-2">
-                <button className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5"><Download size={12} /> PDF 저장</button>
+                <button
+                  onClick={handleDownloadPdf}
+                  disabled={downloading}
+                  className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Download size={12} /> {downloading ? '생성 중...' : 'PDF 저장'}
+                </button>
                 <button onClick={onClose} className="px-5 py-2 text-xs bg-slate-900 text-white rounded font-bold hover:bg-slate-800">확인</button>
               </div>
             </div>
