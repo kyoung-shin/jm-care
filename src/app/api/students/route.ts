@@ -47,14 +47,12 @@ export async function POST(req: Request) {
     delete payload.id;
     const { branchId: requestedBranchId, ...data } = payload;
 
-    // 소속 지점은 서버가 결정한다. 원장·강사는 본인 지점 고정,
+    // 소속 지점은 서버가 결정한다. 원장·강사는 본인 지점으로 고정하고 요청값은
+    // 무시한다(구 버전 번들이 캐시된 클라이언트가 엉뚱한 지점을 보내도 안전하게).
     // 본사 관리자만 지점을 직접 지정할 수 있다.
     const branchId = caller.role === 'ADMIN' ? requestedBranchId : caller.branchId;
     if (!branchId) {
       return NextResponse.json({ error: '소속 지점을 확인할 수 없습니다' }, { status: 400 });
-    }
-    if (caller.role !== 'ADMIN' && requestedBranchId && requestedBranchId !== caller.branchId) {
-      return NextResponse.json({ error: '다른 지점에는 학생을 등록할 수 없습니다' }, { status: 403 });
     }
     if (!data.name || !data.instructorId) {
       return NextResponse.json({ error: '학생 이름과 담임 강사는 필수입니다' }, { status: 400 });
