@@ -60,6 +60,18 @@ interface RealStudentData {
   counselings: RealCounseling[];
 }
 
+// Content-Disposition 의 RFC 5987 형식(filename*=UTF-8''...)에서 한글 파일명을 꺼낸다.
+// 값이 없거나 형식이 다르면 null 을 돌려 호출 측 기본값을 쓰게 한다.
+function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const star = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (star) {
+    try { return decodeURIComponent(star[1]); } catch { /* 잘못된 인코딩은 무시 */ }
+  }
+  const plain = header.match(/filename="([^"]+)"/i);
+  return plain ? plain[1] : null;
+}
+
 function formatGeneratedAt(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -158,9 +170,13 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
     }
   };
 
+  // 학생 데이터가 오기 전에 누르면 선택 회차·옵션이 반영되지 않으므로 버튼을 잠가 둔다
+  const pdfReady = !!studentId && !!realStudent;
+
   // 리포트 PDF 내려받기. 화면에서 고른 회차·옵션을 그대로 서버에 넘긴다.
   const handleDownloadPdf = async () => {
     if (!studentId) { setPdfError('학생 정보를 찾을 수 없습니다'); return; }
+    if (!realStudent) { setPdfError('학생 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요'); return; }
     setDownloading(true);
     setPdfError('');
     try {
@@ -175,7 +191,10 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
         throw new Error(data.error || 'PDF 생성에 실패했습니다');
       }
       const blob = await res.blob();
-      const name = `JM-CARE_학습리포트_${displayName}${period ? `_${period}` : ''}.pdf`;
+      // 파일명은 서버가 Content-Disposition 으로 내려준 값을 쓴다.
+      // 클라이언트에서 조립하면 학생 데이터 로딩 전에 눌렀을 때 기간이 빠진 이름이 나온다.
+      const name = filenameFromDisposition(res.headers.get('content-disposition'))
+        ?? `JM-CARE_학습리포트_${displayName}${period ? `_${period}` : ''}.pdf`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -246,7 +265,7 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
               {!isDirector && (
                 <button
                   onClick={handleDownloadPdf}
-                  disabled={downloading}
+                  disabled={downloading || !pdfReady}
                   className="text-xs px-3 py-1.5 bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1 disabled:opacity-50"
                 >
                   <Printer size={11} /> {downloading ? '생성 중...' : 'PDF로 저장'}
@@ -493,7 +512,7 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                 <button className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5"><Eye size={12} /> 학부모 화면 미리보기</button>
                 <button
                   onClick={handleDownloadPdf}
-                  disabled={downloading}
+                  disabled={downloading || !pdfReady}
                   className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <Download size={12} /> {downloading ? '생성 중...' : 'PDF 내려받기'}
@@ -519,7 +538,7 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleDownloadPdf}
-                  disabled={downloading}
+                  disabled={downloading || !pdfReady}
                   className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <Download size={12} /> {downloading ? '생성 중...' : 'PDF 저장'}

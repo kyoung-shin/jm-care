@@ -12,7 +12,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:seed-admin": "npx tsx prisma/seed-admin.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "e2e:pdf": "dotenv -e .env.local -- npx tsx e2e/report-pdf.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -42,6 +43,7 @@
     "dotenv-cli": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "playwright": "^1.63.0",
     "prisma": "^7.8.0",
     "tailwindcss": "^4",
     "typescript": "^5",
