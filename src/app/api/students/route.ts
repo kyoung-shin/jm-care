@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
       include: {
         instructor: { select: { id: true, name: true } },
         branch: { select: { id: true, name: true } },
+        // 학생 계정 연결 화면에서 이미 연결된 프로필을 구분하는 데 쓴다
+        loginUser: { select: { id: true, name: true } },
         _count: { select: { mockExams: true, counselings: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -39,10 +41,42 @@ export async function POST(req: Request) {
     if (!['ADMIN', 'DIRECTOR', 'INSTRUCTOR'].includes(caller.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    const data = await req.json();
-    const student = await prisma.student.create({ data });
+
+    const payload = await req.json();
+    // id는 서버가 생성한다. 지점은 아래에서 호출자 기준으로 다시 정한다.
+    delete payload.id;
+    const { branchId: requestedBranchId, ...data } = payload;
+
+    // 소속 지점은 서버가 결정한다. 원장·강사는 본인 지점 고정,
+    // 본사 관리자만 지점을 직접 지정할 수 있다.
+    const branchId = caller.role === 'ADMIN' ? requestedBranchId : caller.branchId;
+    if (!branchId) {
+      return NextResponse.json({ error: '소속 지점을 확인할 수 없습니다' }, { status: 400 });
+    }
+    if (caller.role !== 'ADMIN' && requestedBranchId && requestedBranchId !== caller.branchId) {
+      return NextResponse.json({ error: '다른 지점에는 학생을 등록할 수 없습니다' }, { status: 403 });
+    }
+    if (!data.name || !data.instructorId) {
+      return NextResponse.json({ error: '학생 이름과 담임 강사는 필수입니다' }, { status: 400 });
+    }
+
+    const instructor = await prisma.user.findUnique({
+      where: { id: data.instructorId },
+      select: { branchId: true },
+    });
+    if (!instructor || instructor.branchId !== branchId) {
+      return NextResponse.json(
+        { error: '담임 강사가 해당 지점 소속이 아닙니다' },
+        { status: 400 }
+      );
+    }
+
+    const student = await prisma.student.create({
+      data: { ...data, initial: data.initial || String(data.name).charAt(0), branchId },
+    });
     return NextResponse.json(student, { status: 201 });
   } catch (e) {
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    console.error('[students create]', e);
+    return NextResponse.json({ error: '학생 등록 중 오류가 발생했습니다' }, { status: 500 });
   }
 }
