@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getCurrentAppUser } from '@/lib/auth';
+import { authorizeInstructorAccess, studentAccessError } from '@/lib/auth';
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const caller = await getCurrentAppUser();
-    if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const access = await authorizeInstructorAccess((await params).id);
+    if (!access.ok) return studentAccessError(access);
 
     const { id } = await params;
     const { date, day, time, type, label, urgent } = await req.json();

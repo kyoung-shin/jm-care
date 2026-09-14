@@ -1,16 +1,22 @@
 import { NextResponse } from 'next/server';
-import { getCurrentAppUser } from '@/lib/auth';
+import { authorizeStudentAccess, studentAccessError, writeForbidden } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const caller = await getCurrentAppUser();
-    if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (!['INSTRUCTOR', 'DIRECTOR', 'ADMIN'].includes(caller.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     const { id } = await params;
+
+    // 예약은 학생에 딸려 있다. 그 학생을 다룰 수 있는 직원만 확정·거절할 수 있다.
+    const appointment = await prisma.appointmentRequest.findUnique({
+      where: { id },
+      select: { studentId: true },
+    });
+    if (!appointment) return NextResponse.json({ error: '상담 예약을 찾을 수 없습니다' }, { status: 404 });
+
+    const access = await authorizeStudentAccess(appointment.studentId);
+    if (!access.ok) return studentAccessError(access);
+    if (!access.canWrite) return writeForbidden();
+
     const { status, confirmedSlot } = await req.json();
     if (!['confirmed', 'declined'].includes(status)) {
       return NextResponse.json({ error: 'status는 confirmed 또는 declined여야 합니다' }, { status: 400 });

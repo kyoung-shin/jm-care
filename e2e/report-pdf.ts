@@ -70,6 +70,8 @@ interface Fixture {
   parU: string;
   /** 다른 지점 학생 — 권한 차단 확인용 */
   otherStudentId: string | null;
+  /** 다른 지점 강사 — 권한 차단 확인용 */
+  otherInstructorId: string | null;
 }
 
 async function createFixture(): Promise<Fixture> {
@@ -147,8 +149,10 @@ async function createFixture(): Promise<Fixture> {
   // 권한 차단 확인에 쓸 다른 지점 학생
   const all = await api(admin, '/api/students');
   const other = (all.data as { id: string; branchId: string }[] | null)?.find(s => s.branchId !== branchId) ?? null;
+  const staff = await api(admin, '/api/users?role=INSTRUCTOR');
+  const otherIns = (staff.data as { id: string; branchId: string | null }[] | null)?.find(u => u.branchId && u.branchId !== branchId) ?? null;
 
-  return { branchId, studentId, dirU, parU, otherStudentId: other?.id ?? null };
+  return { branchId, studentId, dirU, parU, otherStudentId: other?.id ?? null, otherInstructorId: otherIns?.id ?? null };
 }
 
 // 'ZZ_자동검증_' 지점과 거기 딸린 계정·학생·가입신청만 지운다
@@ -271,6 +275,11 @@ async function run(fx: Fixture, browser: Browser) {
   const crossBranch = await (await dp.request.get(`${BASE}/api/users?branchId=branch_wonjung`)).json();
   ok('원장이 다른 지점 branchId 로 조회 → 결과 없음', Array.isArray(crossBranch) && crossBranch.length === 0, `${Array.isArray(crossBranch) ? crossBranch.length : '?'}건`);
 
+  if (fx.otherInstructorId) {
+    const r = await dp.request.get(`${BASE}/api/instructors/${fx.otherInstructorId}/summary`);
+    ok('원장이 다른 지점 강사 요약 조회 → 403', r.status() === 403, `status=${r.status()}`);
+  }
+
   await dirCtx.close();
 
   console.log('\n[학부모] /parent — 버튼 1 "PDF로 저장", 버튼 3 "PDF 저장"');
@@ -355,6 +364,15 @@ async function run(fx: Fixture, browser: Browser) {
 
   const dirList = await pp.request.get(`${BASE}/api/users?role=INSTRUCTOR`);
   ok('학부모가 회원 명부 조회 → 403', dirList.status() === 403, `status=${dirList.status()}`);
+
+  if (fx.otherInstructorId) {
+    const insSummary = await pp.request.get(`${BASE}/api/instructors/${fx.otherInstructorId}/summary`);
+    ok('학부모가 강사 요약 조회 → 403', insSummary.status() === 403, `status=${insSummary.status()}`);
+    const insWrite = await pp.request.post(`${BASE}/api/instructors/${fx.otherInstructorId}/schedule`, {
+      data: { date: '01.01', day: '월', time: '10:00', type: '수업', label: '무단 등록' },
+    });
+    ok('학부모가 강사 일정 추가 시도 → 403', insWrite.status() === 403, `status=${insWrite.status()}`);
+  }
 
   await parCtx.close();
 }

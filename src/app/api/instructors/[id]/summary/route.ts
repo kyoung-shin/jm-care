@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getCurrentAppUser } from '@/lib/auth';
+import { authorizeInstructorAccess, studentAccessError } from '@/lib/auth';
 
 function parseDate(s: string): Date | null {
   const m = s.match(/(\d{4})\.(\d{2})\.(\d{2})/);
@@ -39,8 +39,8 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const caller = await getCurrentAppUser();
-  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await authorizeInstructorAccess((await params).id);
+  if (!access.ok) return studentAccessError(access);
 
   const { id } = await params;
 
