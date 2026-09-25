@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   AlertTriangle, CheckCircle2, Target, MessageSquare,
   ArrowUpRight, Sparkles, FileText,
-  Activity, TrendingUp, BookOpen,
+  Activity, TrendingUp, BookOpen, UserCog,
 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, ReferenceLine, YAxis } from 'recharts';
 import MockExamChart, { type MockExamRow } from '@/components/charts/MockExamChart';
@@ -13,6 +13,7 @@ import Roadmap, { type RoadmapStep } from '@/components/dashboard/Roadmap';
 import CounselingModal from '@/components/modals/CounselingModal';
 import ReportModal from '@/components/modals/ReportModal';
 import StudentPickerModal from '@/components/modals/StudentPickerModal';
+import StudentEditModal from '@/components/modals/StudentEditModal';
 import Footer from '@/components/dashboard/Footer';
 import { statusConfig, actionStatusConfig, type CounselingRecord } from '@/lib/dummy-data';
 import { subjectsForGrade } from '@/lib/subjects';
@@ -87,6 +88,7 @@ function DirectorPage() {
   const [counselingList, setCounselingList] = useState<CounselingRecord[]>([]);
   const [reportOpen, setReportOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [counselingModal, setCounselingModal] = useState<{
     mode: 'new' | 'detail';
     data?: CounselingRecord;
@@ -109,17 +111,23 @@ function DirectorPage() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
+  // 학생 정보 수정 후에도 다시 불러와야 해서 따로 뺐다
+  const reloadStudent = useCallback(() => {
     if (!studentId) return;
     fetch(`/api/students/${studentId}`)
       .then(r => r.json())
       .then(d => { if (!d.error) setStudent(d); })
       .catch(() => {});
+  }, [studentId]);
+
+  useEffect(() => {
+    if (!studentId) return;
+    reloadStudent();
     fetch(`/api/students/${studentId}/counselings`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setCounselingList(d); })
       .catch(() => setCounselingList([]));
-  }, [studentId]);
+  }, [studentId, reloadStudent]);
 
   const handleSaveCounseling = useCallback(async (record: CounselingRecord) => {
     if (!studentId) return;
@@ -199,6 +207,9 @@ function DirectorPage() {
           </button>
           <button onClick={() => setCounselingModal({ mode: 'new', prefill: null })} className="px-3 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-800 flex items-center gap-1">
             <MessageSquare size={12} /> 상담 기록 +
+          </button>
+          <button onClick={() => setEditOpen(true)} className="px-3 py-1.5 bg-white border border-stone-300 text-slate-700 rounded hover:bg-stone-50 flex items-center gap-1">
+            <UserCog size={12} /> 학생 정보 수정
           </button>
         </div>
       </div>
@@ -486,6 +497,14 @@ function DirectorPage() {
           onClose={() => setCounselingModal(null)}
           onSave={handleSaveCounseling}
           onToggleAction={handleToggleAction}
+        />
+      )}
+      {editOpen && studentId && (
+        <StudentEditModal
+          studentId={studentId}
+          branchId={branchId}
+          onClose={() => setEditOpen(false)}
+          onSaved={reloadStudent}
         />
       )}
       {pickerOpen && branchId && (

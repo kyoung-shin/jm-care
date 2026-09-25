@@ -119,6 +119,8 @@ export default function ParentPage() {
   const [parentName, setParentName] = useState('학부모');
   const [childId, setChildId] = useState<string | null>(null);
   const [child, setChild] = useState<Child | null>(null);
+  // 형제·자매가 연결된 경우 전환할 수 있도록 목록을 들고 있는다
+  const [siblings, setSiblings] = useState<Array<{ id: string; name: string; grade: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [reportOpen, setReportOpen] = useState(false);
   const [openReportId, setOpenReportId] = useState<string | null>(null);
@@ -128,13 +130,23 @@ export default function ParentPage() {
     fetch(`/api/students/${id}`).then(r => r.json()).then(full => { if (!full.error) setChild(full); }).catch(() => {});
   };
 
+  const switchChild = (id: string) => {
+    if (id === childId) return;
+    setChildId(id);
+    setChild(null);
+    fetch(`/api/students/${id}`).then(r => r.json()).then(full => { if (!full.error) setChild(full); }).catch(() => {});
+  };
+
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(async me => {
       if (!me?.id) { setLoading(false); return; }
       if (me.name) setParentName(me.name);
       const children = await fetch(`/api/students?parentId=${me.id}`).then(r => r.json());
-      const first = Array.isArray(children) ? children[0] : null;
-      if (!first) { setLoading(false); return; }
+      if (!Array.isArray(children) || children.length === 0) { setLoading(false); return; }
+      // 학년이 높은 자녀부터 보여 준다
+      const sorted = [...children].sort((a, b) => (b.grade ?? '').localeCompare(a.grade ?? ''));
+      setSiblings(sorted.map(c => ({ id: c.id, name: c.name, grade: c.grade })));
+      const first = sorted[0];
       setChildId(first.id);
       const full = await fetch(`/api/students/${first.id}`).then(r => r.json());
       if (!full.error) setChild(full);
@@ -177,6 +189,26 @@ export default function ParentPage() {
       <div className="max-w-5xl mx-auto px-8 py-10">
         <div className="mb-8 pb-6 border-b border-stone-300/60">
           <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-2">JONGNO M-SCHOOL · For Parents</div>
+          {siblings.length > 1 && (
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-[11px] text-slate-500 shrink-0">자녀 선택</span>
+              <div className="flex flex-wrap gap-1.5">
+                {siblings.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => switchChild(s.id)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                      s.id === childId
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-stone-300 bg-white text-slate-700 hover:border-slate-400'
+                    }`}
+                  >
+                    {s.name} · {s.grade}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="serif-ko text-[36px] font-black text-slate-900 leading-tight">{parentName}, 안녕하세요.</div>
           <div className="text-base text-slate-600 mt-2.5 leading-relaxed">
             <span className="font-bold text-slate-900">{child.name}</span> 학생이 종로엠스쿨과 {enrollmentPhrase(child.enrolledMonths)} 그 성장의 기록을 안내드립니다.

@@ -2,7 +2,7 @@
 import RoleGuard from '@/components/RoleGuard';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Check, X, Search, UserPlus, RotateCcw, AlertCircle } from 'lucide-react';
+import { Check, X, Search, UserPlus, RotateCcw, AlertCircle, Users, Save } from 'lucide-react';
 
 interface PendingUser {
   id: string;
@@ -22,6 +22,13 @@ interface Student {
   school: string;
   loginUser?: { id: string; name: string } | null;
 }
+interface LinkedParent {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  children: { id: string; name: string; grade: string; school: string }[];
+}
 
 const ROLE_LABELS: Record<string, string> = { INSTRUCTOR: '강사', PARENT: '학부모', STUDENT: '학생' };
 
@@ -33,18 +40,56 @@ function DirectorUsersPage() {
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [branchName, setBranchName] = useState<string | null>(null);
+  // 승인이 끝난 학부모의 자녀 연결 (형제·자매가 나중에 등록된 경우 여기서 추가한다)
+  const [parents, setParents] = useState<LinkedParent[]>([]);
+  const [linkEdit, setLinkEdit] = useState<Record<string, string[]>>({});
+  const [linkQuery, setLinkQuery] = useState<Record<string, string>>({});
+  const [linkSaving, setLinkSaving] = useState<Record<string, boolean>>({});
+  const [linkMsg, setLinkMsg] = useState<Record<string, { text: string; ok: boolean }>>({});
 
   const load = async () => {
     const me = await fetch('/api/auth/me').then(r => (r.ok ? r.json() : null)).catch(() => null);
     setBranchName(me?.branchName ?? null);
-    const [p, s] = await Promise.all([
+    const [p, s, pa] = await Promise.all([
       fetch('/api/director/pending-users').then(r => (r.ok ? r.json() : [])).catch(() => []),
       me?.branchId
         ? fetch(`/api/students?branchId=${me.branchId}`).then(r => (r.ok ? r.json() : [])).catch(() => [])
         : Promise.resolve([]),
+      fetch('/api/director/parents').then(r => (r.ok ? r.json() : [])).catch(() => []),
     ]);
     if (Array.isArray(p)) setApplications(p);
     if (Array.isArray(s)) setStudents(s);
+    if (Array.isArray(pa)) {
+      setParents(pa);
+      setLinkEdit(Object.fromEntries(pa.map((x: LinkedParent) => [x.id, x.children.map(c => c.id)])));
+    }
+  };
+
+  const toggleChild = (parentId: string, studentId: string) => {
+    setLinkEdit(prev => {
+      const cur = prev[parentId] ?? [];
+      return { ...prev, [parentId]: cur.includes(studentId) ? cur.filter(i => i !== studentId) : [...cur, studentId] };
+    });
+  };
+
+  const saveChildren = async (parent: LinkedParent) => {
+    setLinkSaving(l => ({ ...l, [parent.id]: true }));
+    setLinkMsg(m => ({ ...m, [parent.id]: { text: '', ok: true } }));
+    try {
+      const res = await fetch(`/api/director/parents/${parent.id}/children`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: linkEdit[parent.id] ?? [] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '저장에 실패했습니다');
+      setLinkMsg(m => ({ ...m, [parent.id]: { text: '저장했습니다', ok: true } }));
+      await load();
+    } catch (e) {
+      setLinkMsg(m => ({ ...m, [parent.id]: { text: e instanceof Error ? e.message : '저장에 실패했습니다', ok: false } }));
+    } finally {
+      setLinkSaving(l => ({ ...l, [parent.id]: false }));
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -242,6 +287,107 @@ function DirectorUsersPage() {
             거절된 신청자는 같은 아이디로 다시 신청할 수 없습니다. 잘못 거절했다면 여기서 다시 승인해 주세요.
           </div>
           <div className="space-y-3">{rejected.map(renderCard)}</div>
+        </div>
+      )}
+
+      {parents.length > 0 && (
+        <div className="mt-12 border-t border-stone-200 pt-8">
+          <div className="flex items-center gap-2 mb-1">
+            <Users size={15} className="text-slate-700" />
+            <div className="serif-ko text-lg font-bold text-slate-900">학부모 자녀 연결</div>
+          </div>
+          <div className="text-xs text-slate-500 mb-5">
+            승인이 끝난 뒤에 형제·자매가 등록된 경우 여기서 자녀를 추가하세요. 체크한 학생이 최종 연결 상태가 됩니다.
+          </div>
+
+          <div className="space-y-3">
+            {parents.map(p => {
+              const chosen = linkEdit[p.id] ?? [];
+              const current = p.children.map(c => c.id);
+              const dirty = chosen.length !== current.length || chosen.some(id => !current.includes(id));
+              const q = linkQuery[p.id] ?? '';
+              const visible = students.filter(s => !q || s.name.includes(q) || (s.school ?? '').includes(q));
+              const msg = linkMsg[p.id];
+
+              return (
+                <div key={p.id} className="bg-white border border-stone-200 rounded-xl p-5">
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-full bg-stone-200 text-slate-600 flex items-center justify-center serif-ko font-bold shrink-0">
+                        {p.name.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900">{p.name}</div>
+                        <div className="text-xs text-slate-500">
+                          {p.phone || p.email || '연락처 없음'}
+                          {' · '}
+                          {p.children.length > 0
+                            ? `현재 자녀 ${p.children.map(c => c.name).join(', ')}`
+                            : '연결된 자녀 없음'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {msg?.text && (
+                        <span className={`text-[11px] font-semibold ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</span>
+                      )}
+                      <button
+                        onClick={() => saveChildren(p)}
+                        disabled={!dirty || linkSaving[p.id] || chosen.length === 0}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 disabled:opacity-40"
+                      >
+                        <Save size={12} /> {linkSaving[p.id] ? '저장 중...' : '연결 저장'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {students.length === 0 ? (
+                    <div className="text-xs text-slate-500 bg-stone-50 border border-stone-200 rounded-lg p-3">
+                      연결할 수 있는 학생이 없습니다.{' '}
+                      <Link href="/students/new" className="font-semibold text-slate-900 underline underline-offset-2">학생 등록하러 가기</Link>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <div className="text-xs font-semibold text-slate-600">
+                          자녀 선택 {chosen.length > 0 && <span className="text-emerald-700 ml-1">· {chosen.length}명</span>}
+                        </div>
+                        <div className="relative w-52">
+                          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            value={q}
+                            onChange={e => setLinkQuery(s => ({ ...s, [p.id]: e.target.value }))}
+                            placeholder="이름 또는 학교 검색"
+                            className="w-full text-xs bg-white border border-stone-300 rounded-lg pl-7 pr-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                          />
+                        </div>
+                      </div>
+                      {visible.length === 0 ? (
+                        <div className="text-xs text-slate-400">&lsquo;{q}&rsquo; 검색 결과가 없습니다</div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto">
+                          {visible.map(s => {
+                            const on = chosen.includes(s.id);
+                            return (
+                              <button
+                                key={s.id}
+                                onClick={() => toggleChild(p.id, s.id)}
+                                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                                  on ? 'border-slate-900 bg-slate-900 text-white' : 'border-stone-300 bg-white text-slate-700 hover:border-slate-400'
+                                }`}
+                              >
+                                {s.name} · {s.grade} {s.school}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

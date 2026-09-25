@@ -67,7 +67,38 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (!access.ok) return studentAccessError(access);
     if (!access.canWrite) return writeForbidden();
     const { id } = await params;
-    const data = await req.json();
+    const body = await req.json();
+
+    // 요청 본문을 그대로 넘기지 않는다. 지점 이동은 이 경로로 허용하지 않는다.
+    const data: Record<string, unknown> = {};
+    for (const k of ['name', 'school', 'finalGoalSchool', 'finalGoalDetail', 'finalGoalTrack',
+                     'midGoalSchool', 'midGoalDetail', 'midGoalTrack'] as const) {
+      if (typeof body[k] === 'string') data[k] = body[k].trim() || null;
+    }
+    if (typeof body.name === 'string' && body.name.trim()) {
+      data.name = body.name.trim();
+      data.initial = body.name.trim().charAt(0);
+    }
+    if (typeof body.grade === 'string' && GRADE_INDEX[body.grade] !== undefined) data.grade = body.grade;
+    if (body.enrolledMonths !== undefined && body.enrolledMonths !== null) {
+      const n = Number(body.enrolledMonths);
+      if (Number.isFinite(n) && n >= 0) data.enrolledMonths = Math.floor(n);
+    }
+    if (typeof body.instructorId === 'string' && body.instructorId) {
+      const instructor = await prisma.user.findUnique({
+        where: { id: body.instructorId },
+        select: { branchId: true, role: true },
+      });
+      if (!instructor || instructor.branchId !== access.student.branchId) {
+        return NextResponse.json({ error: '담임 강사가 해당 지점 소속이 아닙니다' }, { status: 400 });
+      }
+      data.instructorId = body.instructorId;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: '수정할 내용이 없습니다' }, { status: 400 });
+    }
+
     const student = await prisma.student.update({ where: { id }, data });
     return NextResponse.json(student);
   } catch (e) {

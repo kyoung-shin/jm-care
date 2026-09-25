@@ -30,6 +30,7 @@ const ARTIFACTS = fs.mkdtempSync(path.join(os.tmpdir(), 'jmcare-e2e-'));
 
 let pass = 0;
 let fail = 0;
+let lastPage: Page | null = null;
 const ok = (name: string, cond: boolean, detail = '') => {
   if (cond) { pass++; console.log(`  PASS  ${name}`); }
   else { fail++; console.log(`  FAIL  ${name}${detail ? ` — ${detail}` : ''}`); }
@@ -66,6 +67,8 @@ interface PendingRow { userId: string; name: string }
 interface Fixture {
   branchId: string;
   studentId: string;
+  /** 승인 이후에 등록된 형제 — 자녀 추가 연결 확인용 */
+  siblingId: string;
   dirU: string;
   parU: string;
   /** 다른 지점 학생 — 권한 차단 확인용 */
@@ -125,7 +128,7 @@ async function createFixture(): Promise<Fixture> {
     }) });
   }
 
-  // 학부모 — 자녀 연결 후 승인
+  // 학부모 — 자녀 연결 후 승인 (이 시점에 동생은 아직 없다)
   const parU = `${TAG}_par`;
   await signup(jar(), parU, 'E2E학부모', 'PARENT', branchId);
   queue = await api(dir, '/api/director/pending-users');
@@ -146,13 +149,19 @@ async function createFixture(): Promise<Fixture> {
     sentAt: new Date().toISOString(),
   }) });
 
+  // 승인이 끝난 뒤에 등록되는 형제(동생)
+  const sibling = await api(dir, '/api/students', { method: 'POST', body: JSON.stringify({
+    name: 'E2E동생', initial: 'E', grade: '초5', school: 'E2E초등학교', instructorId,
+  }) });
+  const siblingId = (sibling.data as { id: string }).id;
+
   // 권한 차단 확인에 쓸 다른 지점 학생
   const all = await api(admin, '/api/students');
   const other = (all.data as { id: string; branchId: string }[] | null)?.find(s => s.branchId !== branchId) ?? null;
   const staff = await api(admin, '/api/users?role=INSTRUCTOR');
   const otherIns = (staff.data as { id: string; branchId: string | null }[] | null)?.find(u => u.branchId && u.branchId !== branchId) ?? null;
 
-  return { branchId, studentId, dirU, parU, otherStudentId: other?.id ?? null, otherInstructorId: otherIns?.id ?? null };
+  return { branchId, studentId, siblingId, dirU, parU, otherStudentId: other?.id ?? null, otherInstructorId: otherIns?.id ?? null };
 }
 
 // 'ZZ_자동검증_' 지점과 거기 딸린 계정·학생·가입신청만 지운다
@@ -176,6 +185,7 @@ async function cleanup() {
 // ── 브라우저 헬퍼 ──────────────────────────────────────────
 let shotSeq = 0;
 async function shot(page: Page, name: string) {
+  lastPage = page;
   const file = path.join(ARTIFACTS, `${String(++shotSeq).padStart(2, '0')}-${name}.png`);
   await page.screenshot({ path: file });
   return file;
@@ -189,6 +199,23 @@ async function signIn(ctx: BrowserContext, username: string): Promise<Page> {
   await page.locator('button[type="submit"], button:has-text("로그인")').first().click();
   await page.waitForURL(u => !u.pathname.includes('sign-in'), { timeout: 30_000 });
   return page;
+}
+
+/**
+ * 원장 화면은 지점에서 가장 최근 등록된 학생을 먼저 띄운다.
+ * 형제가 있으면 원하는 학생이 아닐 수 있으므로 학생 선택 모달로 지정한다.
+ */
+async function selectStudent(page: Page, name: string) {
+  await page.waitForSelector('text=학생 변경', { timeout: 60_000 });
+  await page.waitForTimeout(1500);
+  if (await page.locator(`text=${name} ·`).count() === 0) {
+    await page.locator('text=학생 변경').click();
+    await page.waitForTimeout(1200);
+    await page.getByRole('button', { name: new RegExp(name) }).first().click();
+    await page.waitForTimeout(2500);
+  }
+  await page.waitForSelector(`text=${name}`, { timeout: 30_000 });
+  await page.waitForTimeout(1500);
 }
 
 async function clickAndExpectPdf(page: Page, selector: ReturnType<Page['getByRole']>, label: string): Promise<string | null> {
@@ -214,8 +241,7 @@ async function run(fx: Fixture, browser: Browser) {
   const dirCtx = await browser.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true });
   const dp = await signIn(dirCtx, fx.dirU);
   await dp.goto(`${BASE}/director`, { waitUntil: 'networkidle' });
-  await dp.waitForSelector('text=E2E민준', { timeout: 30_000 });
-  await dp.waitForTimeout(2000);
+  await selectStudent(dp, 'E2E민준');
 
   // 그래프 Y축이 0~100 고정이 아니라 실제 점수 구간(84~93)으로 좁혀졌는지
   const chart = dp.locator('.recharts-wrapper').first();
@@ -255,6 +281,61 @@ async function run(fx: Fixture, browser: Browser) {
     await dp.waitForTimeout(1200);
     await clickAndExpectPdf(dp, btn2, '버튼 2 (1차 회차 선택)');
   }
+  // ── 학생 정보 수정 ──
+  console.log('\n[원장] 학생 정보 수정');
+  await dp.goto(`${BASE}/director`, { waitUntil: 'networkidle' });
+  await selectStudent(dp, 'E2E민준');
+  const editBtn = dp.getByRole('button', { name: /학생 정보 수정/ });
+  ok('"학생 정보 수정" 버튼 노출', await editBtn.count() > 0);
+  await editBtn.first().click();
+  await dp.waitForTimeout(2000);
+  await shot(dp, 'director-student-edit');
+  // 학교명을 바꿔 저장되는지 확인 (모달의 '학교' 입력칸)
+  await dp.locator('label:has-text("학교") + input').fill('E2E수정중학교');
+  await dp.getByRole('button', { name: /^저장$/ }).click();
+  await dp.waitForSelector('text=저장했습니다', { timeout: 30_000 });
+  await dp.waitForTimeout(1500);
+  const detail = await (await dp.request.get(`${BASE}/api/students/${fx.studentId}`)).json();
+  ok('학교명 수정이 저장됨', detail.school === 'E2E수정중학교', `school=${detail.school}`);
+  ok('수정해도 지점은 그대로', detail.branchId === fx.branchId, `branchId=${detail.branchId}`);
+
+  // 지점 이동은 이 경로로 막혀야 한다
+  const moveAttempt = await dp.request.put(`${BASE}/api/students/${fx.studentId}`, {
+    data: { branchId: 'branch_wonjung', name: 'E2E민준' },
+  });
+  const afterMove = await (await dp.request.get(`${BASE}/api/students/${fx.studentId}`)).json();
+  ok('학생 수정으로 지점 이동 불가', afterMove.branchId === fx.branchId, `status=${moveAttempt.status()} branchId=${afterMove.branchId}`);
+
+  // ── 형제·자매 자녀 추가 연결 ──
+  console.log('\n[원장] 승인 후 형제 자녀 연결');
+  await dp.goto(`${BASE}/director/users`, { waitUntil: 'networkidle' });
+  await dp.waitForTimeout(2500);
+  await dp.locator('text=학부모 자녀 연결').scrollIntoViewIfNeeded();
+  await shot(dp, 'director-parent-link');
+  ok('"학부모 자녀 연결" 섹션 노출', await dp.locator('text=학부모 자녀 연결').count() > 0);
+
+  const before = await (await dp.request.get(`${BASE}/api/director/parents`)).json();
+  ok('승인된 학부모가 목록에 보임', Array.isArray(before) && before.length === 1 && before[0].children.length === 1,
+    `${Array.isArray(before) ? before.length : '?'}명 / 자녀 ${before?.[0]?.children?.length}`);
+
+  // 동생을 눌러 추가하고 저장
+  await dp.getByRole('button', { name: /E2E동생/ }).first().click();
+  await dp.getByRole('button', { name: /연결 저장/ }).first().click();
+  await dp.waitForSelector('text=저장했습니다', { timeout: 60_000 });
+  await dp.waitForTimeout(1200);
+  const after = await (await dp.request.get(`${BASE}/api/director/parents`)).json();
+  const names = (after?.[0]?.children ?? []).map((c: { name: string }) => c.name).sort();
+  ok('형제 추가 연결 저장됨 (자녀 2명)', names.length === 2 && names.includes('E2E동생') && names.includes('E2E민준'), names.join(','));
+  await shot(dp, 'director-parent-link-after');
+
+  // 다른 지점 학생은 연결할 수 없다
+  if (fx.otherStudentId) {
+    const bad = await dp.request.patch(`${BASE}/api/director/parents/${before[0].id}/children`, {
+      data: { studentIds: [fx.studentId, fx.otherStudentId] },
+    });
+    ok('다른 지점 학생을 자녀로 연결 시도 → 400', bad.status() === 400, `status=${bad.status()}`);
+  }
+
   // 원장은 본인 지점 밖으로 나갈 수 없다 — 다른 지점 branchId 를 넘겨도 교집합만 나온다
   if (fx.otherStudentId) {
     const leak = await dp.request.get(`${BASE}/api/students/${fx.otherStudentId}`);
@@ -288,6 +369,20 @@ async function run(fx: Fixture, browser: Browser) {
   await pp.goto(`${BASE}/parent`, { waitUntil: 'networkidle' });
   await pp.waitForTimeout(3000);
   await shot(pp, 'parent-dashboard');
+
+  // 형제가 연결되면 자녀 전환 UI 가 나와야 하고, 전환해서 각자 화면을 볼 수 있어야 한다
+  ok('자녀가 2명이면 자녀 선택 UI 노출', await pp.locator('text=자녀 선택').count() > 0);
+  const siblingTab = pp.getByRole('button', { name: /E2E동생/ });
+  ok('형제(E2E동생) 탭 노출', await siblingTab.count() > 0);
+  if (await siblingTab.count() > 0) {
+    await siblingTab.first().click();
+    await pp.waitForTimeout(2500);
+    ok('형제 화면으로 전환됨', await pp.locator('text=E2E동생').count() > 0);
+    await shot(pp, 'parent-sibling');
+  }
+  // 리포트가 있는 첫째로 되돌린다
+  await pp.getByRole('button', { name: /E2E민준/ }).first().click();
+  await pp.waitForTimeout(2500);
 
   await pp.locator('text=월간 리포트').scrollIntoViewIfNeeded();
   ok('학부모 화면에 리포트 "열기" 노출', await pp.getByRole('button', { name: /열기/ }).count() > 0);
@@ -342,7 +437,12 @@ async function run(fx: Fixture, browser: Browser) {
   // ── /api/students/* 전체 스코핑 ──
   console.log('\n[권한] 학부모 세션으로 본 /api/students/*');
   const mine = await (await pp.request.get(`${BASE}/api/students`)).json();
-  ok('학생 목록에 본인 자녀만 보임', Array.isArray(mine) && mine.length === 1 && mine[0].id === fx.studentId, `${Array.isArray(mine) ? mine.length : '?'}건`);
+  const mineIds = Array.isArray(mine) ? mine.map((s: { id: string }) => s.id).sort() : [];
+  ok('학부모 목록에 연결된 자녀 2명(형제 포함)만 보임',
+    mineIds.length === 2 && mineIds.includes(fx.studentId) && mineIds.includes(fx.siblingId),
+    `${mineIds.length}건`);
+  const sib = await pp.request.get(`${BASE}/api/students/${fx.siblingId}`);
+  ok('학부모가 새로 연결된 형제 정보 조회 가능', sib.status() === 200, `status=${sib.status()}`);
 
   if (fx.otherStudentId) {
     for (const [label, p] of [
@@ -361,6 +461,12 @@ async function run(fx: Fixture, browser: Browser) {
     data: { name: '무단', date: '2026.01.01', korean: 100 },
   });
   ok('학부모가 자녀 성적 등록 시도 → 403', writeAttempt.status() === 403, `status=${writeAttempt.status()}`);
+
+  const editAttempt = await pp.request.put(`${BASE}/api/students/${fx.studentId}`, { data: { name: '무단수정' } });
+  ok('학부모가 학생 정보 수정 시도 → 403', editAttempt.status() === 403, `status=${editAttempt.status()}`);
+
+  const linkAttempt = await pp.request.patch(`${BASE}/api/director/parents/${fx.studentId}/children`, { data: { studentIds: [] } });
+  ok('학부모가 자녀 연결 API 호출 → 403', linkAttempt.status() === 403, `status=${linkAttempt.status()}`);
 
   const dirList = await pp.request.get(`${BASE}/api/users?role=INSTRUCTOR`);
   ok('학부모가 회원 명부 조회 → 403', dirList.status() === 403, `status=${dirList.status()}`);
@@ -390,6 +496,9 @@ async function main() {
     // 설치된 Google Chrome 을 그대로 쓴다 (별도 브라우저 다운로드 불필요)
     browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, slowMo: HEADED ? 300 : 0 });
     await run(fx, browser);
+  } catch (e) {
+    if (lastPage) await shot(lastPage, 'failure').catch(() => {});
+    throw e;
   } finally {
     if (browser) await browser.close();
     console.log('\n[정리]');
