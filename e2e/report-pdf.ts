@@ -28,6 +28,20 @@ const PW = 'E2e!' + Math.random().toString(36).slice(2, 10);
 const BRANCH_NAME = `ZZ_자동검증_${TAG}`;
 const ARTIFACTS = fs.mkdtempSync(path.join(os.tmpdir(), 'jmcare-e2e-'));
 
+// 금주 일정에 표시되는지 봐야 하므로 이번 주 평일로 슬롯을 만든다
+const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+function weekdaySlot(offsetFromMonday: number, time: string) {
+  const today = new Date();
+  const dow = today.getDay();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + (dow === 0 ? -6 : 1 - dow));
+  const d = new Date(monday);
+  d.setDate(monday.getDate() + offsetFromMonday);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}(${DAY_LABELS[d.getDay()]}) ${time}`;
+}
+const SLOTS = [weekdaySlot(1, '14:00'), weekdaySlot(2, '16:00'), weekdaySlot(3, '10:30')];
+
 let pass = 0;
 let fail = 0;
 let lastPage: Page | null = null;
@@ -69,6 +83,8 @@ interface Fixture {
   studentId: string;
   /** 승인 이후에 등록된 형제 — 자녀 추가 연결 확인용 */
   siblingId: string;
+  insU: string;
+  instructorId: string;
   dirU: string;
   parU: string;
   /** 다른 지점 학생 — 권한 차단 확인용 */
@@ -149,6 +165,14 @@ async function createFixture(): Promise<Fixture> {
     sentAt: new Date().toISOString(),
   }) });
 
+  // 상담 기록 — 강사 화면에서 내용 확인이 되는지 보기 위해
+  await api(dir, `/api/students/${studentId}/counselings`, { method: 'POST', body: JSON.stringify({
+    date: '2026.03.20', type: '정기', topic: 'E2E 상담 주제',
+    summary: 'E2E 상담 요약 본문입니다.',
+    internalMemo: 'E2E 내부 메모', parentShare: 'E2E 학부모 공유',
+    action: { name: 'E2E 액션', owner: 'E2E강사', deadline: '2026.05.31', status: 'in-progress' },
+  }) });
+
   // 승인이 끝난 뒤에 등록되는 형제(동생)
   const sibling = await api(dir, '/api/students', { method: 'POST', body: JSON.stringify({
     name: 'E2E동생', initial: 'E', grade: '초5', school: 'E2E초등학교', instructorId,
@@ -161,7 +185,7 @@ async function createFixture(): Promise<Fixture> {
   const staff = await api(admin, '/api/users?role=INSTRUCTOR');
   const otherIns = (staff.data as { id: string; branchId: string | null }[] | null)?.find(u => u.branchId && u.branchId !== branchId) ?? null;
 
-  return { branchId, studentId, siblingId, dirU, parU, otherStudentId: other?.id ?? null, otherInstructorId: otherIns?.id ?? null };
+  return { branchId, studentId, siblingId, insU, instructorId, dirU, parU, otherStudentId: other?.id ?? null, otherInstructorId: otherIns?.id ?? null };
 }
 
 // 'ZZ_자동검증_' 지점과 거기 딸린 계정·학생·가입신청만 지운다
@@ -468,6 +492,12 @@ async function run(fx: Fixture, browser: Browser) {
   const linkAttempt = await pp.request.patch(`${BASE}/api/director/parents/${fx.studentId}/children`, { data: { studentIds: [] } });
   ok('학부모가 자녀 연결 API 호출 → 403', linkAttempt.status() === 403, `status=${linkAttempt.status()}`);
 
+  // 강사 화면 검증에 쓸 상담 예약 요청을 학부모가 넣는다
+  const book = await pp.request.post(`${BASE}/api/students/${fx.studentId}/appointments`, {
+    data: { type: 'phone', slot1: SLOTS[0], slot2: SLOTS[1], slot3: SLOTS[2], requestedBy: 'E2E학부모' },
+  });
+  ok('학부모가 상담 예약 요청 → 201', book.status() === 201, `status=${book.status()}`);
+
   const dirList = await pp.request.get(`${BASE}/api/users?role=INSTRUCTOR`);
   ok('학부모가 회원 명부 조회 → 403', dirList.status() === 403, `status=${dirList.status()}`);
 
@@ -483,6 +513,98 @@ async function run(fx: Fixture, browser: Browser) {
   await parCtx.close();
 }
 
+async function runInstructor(fx: Fixture, browser: Browser) {
+  console.log('\n[강사] /instructor — 학생 조회 · 상담 내용 · 예약/일정');
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true });
+  const ip = await signIn(ctx, fx.insU);
+  await ip.goto(`${BASE}/instructor`, { waitUntil: 'networkidle' });
+  await ip.waitForSelector('text=담당 학생', { timeout: 60_000 });
+  await ip.waitForTimeout(2500);
+  await shot(ip, 'instructor-dashboard');
+
+  // 학생 데이터 "보기" — 수정만 가능하던 것을 조회까지
+  const viewBtn = ip.getByRole('button', { name: /^보기$/ });
+  ok('담당 학생에 "보기" 버튼 노출', await viewBtn.count() > 0);
+  // 형제도 담당 학생이라 목록 순서가 바뀔 수 있다. 검사 대상 학생의 행을 지목한다.
+  await ip.locator(`[data-student-id="${fx.studentId}"]`).getByRole('button', { name: /^보기$/ }).click();
+  await ip.waitForTimeout(3000);
+  await shot(ip, 'instructor-student-detail');
+  ok('학생 상세에 목표 노출', await ip.locator('text=고려대학교').count() > 0);
+  ok('학생 상세에 과목별 목표 대비 노출', await ip.locator('text=과목별 목표 대비').count() > 0);
+  ok('학생 상세에 모의고사 추이 노출', await ip.locator('.recharts-wrapper').count() > 0);
+
+  // 상담 내용 확인
+  ok('상담 기록 섹션 노출', await ip.locator('text=상담 기록').count() > 0);
+  ok('상담 주제 노출', await ip.locator('text=E2E 상담 주제').count() > 0);
+  ok('상담 요약 본문 노출', await ip.locator('text=E2E 상담 요약 본문입니다.').count() > 0);
+  ok('내부 메모 노출', await ip.locator('text=E2E 내부 메모').count() > 0);
+  await ip.getByRole('button', { name: /^닫기$/ }).first().click();
+  await ip.waitForTimeout(1200);
+
+  // 상담 예약 확정 → 금주 일정 반영
+  await ip.locator('text=상담 예약 요청').scrollIntoViewIfNeeded();
+  await ip.waitForTimeout(800);
+  ok('상담 예약 요청이 목록에 노출', await ip.locator('text=E2E민준').count() > 0);
+  const firstSlotBtn = ip.getByRole('button', { name: new RegExp(escapeRe(SLOTS[0]) + '\\s*확정') });
+  ok('요청 슬롯 확정 버튼 노출', await firstSlotBtn.count() > 0, SLOTS[0]);
+  await firstSlotBtn.first().click();
+  await ip.waitForTimeout(3500);
+  await shot(ip, 'instructor-appointment-confirmed');
+
+  const sched1 = await (await ip.request.get(`${BASE}/api/instructors/${fx.instructorId}/summary`)).json();
+  const allItems = (s: { schedule: { items: { time: string; type: string; label: string }[] }[] }) =>
+    s.schedule.flatMap(d => d.items);
+  const confirmedItem = allItems(sched1).find(i => i.type === '상담' && i.label.includes('E2E민준'));
+  ok('확정한 상담이 금주 일정에 표시됨', !!confirmedItem, `time=${confirmedItem?.time}`);
+  ok('일정 시각이 확정 슬롯과 일치', confirmedItem?.time === '14:00', `time=${confirmedItem?.time}`);
+
+  // 일시 변경
+  const changeBtn = ip.getByRole('button', { name: /일시 변경/ });
+  ok('확정 건에 "일시 변경" 버튼 노출', await changeBtn.count() > 0);
+  await changeBtn.first().click();
+  await ip.waitForTimeout(1000);
+  await ip.getByRole('button', { name: new RegExp(escapeRe(SLOTS[1]) + '\\s*으로 변경') }).first().click();
+  await ip.waitForTimeout(3500);
+  const sched2 = await (await ip.request.get(`${BASE}/api/instructors/${fx.instructorId}/summary`)).json();
+  const changed = allItems(sched2).filter(i => i.type === '상담' && i.label.includes('E2E민준'));
+  ok('일시 변경이 금주 일정에도 반영됨', changed.length === 1 && changed[0].time === '16:00', `${changed.length}건 time=${changed[0]?.time}`);
+  await shot(ip, 'instructor-appointment-changed');
+
+  // 예약에서 만들어진 일정은 달력에서 직접 못 지운다
+  const evs = await (await ip.request.get(`${BASE}/api/instructors/${fx.instructorId}/summary`)).json();
+  const evId = (evs.schedule as { items: { id: string; type: string }[] }[])
+    .flatMap(d => d.items).find(i => i.type === '상담')?.id;
+  if (evId) {
+    const del = await ip.request.delete(`${BASE}/api/instructors/${fx.instructorId}/schedule/${evId}`);
+    ok('예약으로 생긴 일정은 달력에서 삭제 불가 → 400', del.status() === 400, `status=${del.status()}`);
+  }
+
+  // 거절로 되돌리면 일정에서도 내려간다
+  await ip.getByRole('button', { name: /일시 변경/ }).first().click();
+  await ip.waitForTimeout(800);
+  await ip.getByRole('button', { name: /거절로 변경/ }).first().click();
+  await ip.waitForTimeout(3500);
+  const sched3 = await (await ip.request.get(`${BASE}/api/instructors/${fx.instructorId}/summary`)).json();
+  ok('거절로 되돌리면 금주 일정에서 사라짐',
+    allItems(sched3).filter(i => i.type === '상담' && i.label.includes('E2E민준')).length === 0);
+
+  // 잘못된 형식은 거부
+  const apptList = await (await ip.request.get(`${BASE}/api/instructors/${fx.instructorId}/appointments`)).json();
+  const apptId = apptList?.[0]?.id;
+  if (apptId) {
+    const bad = await ip.request.patch(`${BASE}/api/appointments/${apptId}`, {
+      data: { status: 'confirmed', confirmedSlot: '내일 오후' },
+    });
+    ok('잘못된 일시 형식 → 400', bad.status() === 400, `status=${bad.status()}`);
+  }
+
+  await ctx.close();
+}
+
+function escapeRe(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function main() {
   console.log(`대상: ${BASE}`);
   console.log(`산출물: ${ARTIFACTS}\n`);
@@ -496,6 +618,7 @@ async function main() {
     // 설치된 Google Chrome 을 그대로 쓴다 (별도 브라우저 다운로드 불필요)
     browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, slowMo: HEADED ? 300 : 0 });
     await run(fx, browser);
+    await runInstructor(fx, browser);
   } catch (e) {
     if (lastPage) await shot(lastPage, 'failure').catch(() => {});
     throw e;

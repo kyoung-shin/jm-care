@@ -5,11 +5,12 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
   FileText, MessageSquare, Flame, AlertTriangle, Calendar, Activity,
-  Users, Inbox, ChevronRight, Phone,
+  Users, Inbox, Phone, Eye, Pencil, CalendarClock,
 } from 'lucide-react';
 import CounselingModal from '@/components/modals/CounselingModal';
 import ReportModal from '@/components/modals/ReportModal';
 import StudentInputModal from '@/components/modals/StudentInputModal';
+import StudentDetailModal from '@/components/modals/StudentDetailModal';
 import InstructorPickerModal from '@/components/modals/InstructorPickerModal';
 import StudentPickerModal from '@/components/modals/StudentPickerModal';
 import ScheduleEventModal from '@/components/modals/ScheduleEventModal';
@@ -92,6 +93,12 @@ function InstructorPage() {
     prefill?: null;
   } | null>(null);
   const [inputStudent, setInputStudent] = useState<RealStudent | null>(null);
+  // 담당 학생 상세 보기 (성적·목표·상담 기록 확인용)
+  const [detailStudent, setDetailStudent] = useState<RealStudent | null>(null);
+  // 확정된 예약의 일시를 바꾸는 중인 항목
+  const [reschedule, setReschedule] = useState<string | null>(null);
+  const [customSlot, setCustomSlot] = useState<Record<string, string>>({});
+  const [apptError, setApptError] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -134,14 +141,25 @@ function InstructorPage() {
   useEffect(() => { loadAppointments(); }, [loadAppointments]);
 
   const handleDecideAppointment = async (id: string, status: 'confirmed' | 'declined', confirmedSlot?: string) => {
+    setApptError(e => ({ ...e, [id]: '' }));
     try {
-      await fetch(`/api/appointments/${id}`, {
+      const res = await fetch(`/api/appointments/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, confirmedSlot }),
       });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setApptError(e => ({ ...e, [id]: d.error || '처리에 실패했습니다' }));
+        return;
+      }
+      setReschedule(null);
       loadAppointments();
-    } catch { /* best-effort */ }
+      // 확정·거절은 주간 일정에도 반영되므로 요약도 다시 읽는다
+      loadSummary();
+    } catch {
+      setApptError(e => ({ ...e, [id]: '네트워크 오류가 발생했습니다' }));
+    }
   };
 
   if (!summary) {
@@ -278,24 +296,41 @@ function InstructorPage() {
               <div className="text-xs text-slate-400 text-center py-6">담당 학생이 없습니다</div>
             )}
             {summary.students.slice(0, 6).map(s => (
-              <button
+              <div
                 key={s.id}
-                onClick={() => setInputStudent(s)}
-                className="w-full text-left border border-stone-200 rounded-lg p-3 hover:border-slate-400 hover:shadow-sm transition-all cursor-pointer flex items-center gap-3"
+                data-student-id={s.id}
+                className="border border-stone-200 rounded-lg p-3 hover:border-slate-400 hover:shadow-sm transition-all flex items-center gap-3"
               >
-                <div className="w-9 h-9 rounded-full bg-slate-700 text-white flex items-center justify-center serif-ko font-bold text-sm shrink-0">{s.name.charAt(0)}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="font-bold text-slate-900 text-sm">{s.name}</div>
-                    <div className="text-[10px] text-slate-500">{s.grade}</div>
+                <button onClick={() => setDetailStudent(s)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                  <div className="w-9 h-9 rounded-full bg-slate-700 text-white flex items-center justify-center serif-ko font-bold text-sm shrink-0">{s.name.charAt(0)}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="font-bold text-slate-900 text-sm">{s.name}</div>
+                      <div className="text-[10px] text-slate-500">{s.grade}</div>
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5 truncate">{s.finalGoalSchool ?? '목표 미설정'}</div>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">{s.finalGoalSchool ?? '목표 미설정'}</div>
+                  {typeof s.overallReadiness === 'number' && (
+                    <div className="font-bold num text-slate-900 shrink-0">{s.overallReadiness}<span className="text-[10px] text-slate-500 font-normal">%</span></div>
+                  )}
+                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => setDetailStudent(s)}
+                    title="상세 보기 — 성적·목표·상담 기록"
+                    className="flex items-center gap-1 text-[11px] px-2 py-1.5 border border-stone-300 rounded-lg text-slate-700 hover:bg-stone-50"
+                  >
+                    <Eye size={11} /> 보기
+                  </button>
+                  <button
+                    onClick={() => setInputStudent(s)}
+                    title="현황 입력 — 목표·준비도·성적 추가"
+                    className="flex items-center gap-1 text-[11px] px-2 py-1.5 border border-stone-300 rounded-lg text-slate-700 hover:bg-stone-50"
+                  >
+                    <Pencil size={11} /> 입력
+                  </button>
                 </div>
-                {typeof s.overallReadiness === 'number' && (
-                  <div className="font-bold num text-slate-900 shrink-0">{s.overallReadiness}<span className="text-[10px] text-slate-500 font-normal">%</span></div>
-                )}
-                <ChevronRight size={14} className="text-slate-400 shrink-0" />
-              </button>
+              </div>
             ))}
           </div>
           <div className="mt-4 pt-3 border-t border-stone-100 text-center">
@@ -411,28 +446,64 @@ function InstructorPage() {
                     </div>
                     <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 ${cfg.bg} ${cfg.text}`}>{cfg.label}</div>
                   </div>
-                  {a.status === 'pending' ? (
-                    <div className="flex flex-wrap gap-2">
-                      {slots.map((slot, i) => (
+                  {a.status === 'pending' || reschedule === a.id ? (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {slots.map((slot, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleDecideAppointment(a.id, 'confirmed', slot)}
+                            className={`text-[11px] num px-2.5 py-1.5 border rounded-lg font-semibold transition-colors ${
+                              a.confirmedSlot === slot
+                                ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                                : 'border-stone-300 hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700'
+                            }`}
+                          >
+                            {slot} {reschedule === a.id ? '으로 변경' : '확정'}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={customSlot[a.id] ?? ''}
+                          onChange={e => setCustomSlot(c => ({ ...c, [a.id]: e.target.value }))}
+                          placeholder="직접 입력 예: 2026.09.28(월) 14:00"
+                          className="text-[11px] num border border-stone-300 rounded-lg px-2.5 py-1.5 w-60 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        />
                         <button
-                          key={i}
-                          onClick={() => handleDecideAppointment(a.id, 'confirmed', slot)}
-                          className="text-[11px] num px-2.5 py-1.5 border border-stone-300 rounded-lg hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 font-semibold transition-colors"
+                          onClick={() => handleDecideAppointment(a.id, 'confirmed', customSlot[a.id])}
+                          disabled={!customSlot[a.id]?.trim()}
+                          className="text-[11px] px-2.5 py-1.5 bg-slate-900 text-white rounded-lg font-semibold hover:bg-slate-800 disabled:opacity-40"
                         >
-                          {slot} 확정
+                          이 일시로 확정
                         </button>
-                      ))}
-                      <button
-                        onClick={() => handleDecideAppointment(a.id, 'declined')}
-                        className="text-[11px] px-2.5 py-1.5 border border-stone-300 rounded-lg hover:border-red-300 hover:bg-red-50 hover:text-red-600 text-slate-500 font-semibold transition-colors"
-                      >
-                        거절
-                      </button>
+                        <button
+                          onClick={() => handleDecideAppointment(a.id, 'declined')}
+                          className="text-[11px] px-2.5 py-1.5 border border-stone-300 rounded-lg hover:border-red-300 hover:bg-red-50 hover:text-red-600 text-slate-500 font-semibold transition-colors"
+                        >
+                          {reschedule === a.id ? '거절로 변경' : '거절'}
+                        </button>
+                        {reschedule === a.id && (
+                          <button onClick={() => setReschedule(null)} className="text-[11px] px-2 py-1.5 text-slate-500 hover:text-slate-800">취소</button>
+                        )}
+                      </div>
                     </div>
                   ) : (
-                    <div className="text-[11px] text-slate-600 num">
-                      {a.status === 'confirmed' ? `확정 일시 · ${a.confirmedSlot}` : `요청 일시 · ${slots.join(' / ')}`}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[11px] text-slate-600 num">
+                        {a.status === 'confirmed' ? `확정 일시 · ${a.confirmedSlot}` : `요청 일시 · ${slots.join(' / ')}`}
+                        {a.status === 'confirmed' && <span className="text-slate-400 ml-1.5">· 금주 일정에 표시됩니다</span>}
+                      </div>
+                      <button
+                        onClick={() => setReschedule(a.id)}
+                        className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 border border-stone-300 rounded-lg text-slate-700 hover:bg-stone-50 shrink-0"
+                      >
+                        <CalendarClock size={11} /> {a.status === 'confirmed' ? '일시 변경' : '다시 처리'}
+                      </button>
                     </div>
+                  )}
+                  {apptError[a.id] && (
+                    <div className="mt-2 text-[11px] text-red-600 font-semibold">{apptError[a.id]}</div>
                   )}
                 </div>
               );
@@ -473,6 +544,13 @@ function InstructorPage() {
           onClose={() => setCounselingModal(null)}
           onSave={handleSaveCounseling}
           onToggleAction={() => {}}
+        />
+      )}
+      {detailStudent && (
+        <StudentDetailModal
+          studentId={detailStudent.id}
+          onClose={() => setDetailStudent(null)}
+          onEditStatus={() => { setInputStudent(detailStudent); setDetailStudent(null); }}
         />
       )}
       {inputStudent && (

@@ -107,6 +107,9 @@ model ScheduleEvent {
   type         String
   label        String
   urgent       Boolean  @default(false)
+  // 상담 예약을 확정해서 생긴 일정이면 그 예약을 가리킨다.
+  // 예약 일시를 바꾸거나 거절로 되돌리면 이 일정도 같이 따라간다.
+  appointmentId String? @unique
   createdAt    DateTime @default(now())
 }
 
