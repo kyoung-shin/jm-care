@@ -620,7 +620,9 @@ async function runInstructor(fx: Fixture, browser: Browser) {
 
   await ip.getByRole('link', { name: /학생 목록/ }).first().click();
   await ip.waitForURL(u => u.pathname === '/students', { timeout: 30_000 });
-  await ip.waitForTimeout(2500);
+  // 목록은 세션 조회 후 다시 학생을 불러오므로 행이 그려질 때까지 기다린다
+  await ip.waitForSelector('[data-student-id]', { timeout: 60_000 });
+  await ip.waitForTimeout(800);
   await shot(ip, 'instructor-student-list');
   ok('학생 목록 화면 진입', ip.url().includes('/students'));
   ok('목록에 "보기" 버튼 노출', await ip.getByRole('button', { name: /^보기$/ }).count() > 0);
