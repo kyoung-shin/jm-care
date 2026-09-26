@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
   FileText, MessageSquare, Flame, AlertTriangle, Calendar, Activity,
-  Users, Inbox, Phone, Eye, Pencil, CalendarClock,
+  Users, Inbox, Phone, Eye, Pencil, CalendarClock, UserPlus,
 } from 'lucide-react';
 import CounselingModal from '@/components/modals/CounselingModal';
 import ReportModal from '@/components/modals/ReportModal';
@@ -290,6 +290,9 @@ function InstructorPage() {
         <div className="col-span-7 bg-white border border-stone-200 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2"><Users size={14} className="text-slate-700" /><div className="serif-ko text-base font-bold text-slate-900">담당 학생 ({summary.students.length}명)</div></div>
+            <Link href="/students/new" className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 border border-stone-300 rounded-lg text-slate-700 hover:bg-stone-50">
+              <UserPlus size={11} /> 학생 등록
+            </Link>
           </div>
           <div className="space-y-2">
             {summary.students.length === 0 && (

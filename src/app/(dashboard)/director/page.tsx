@@ -2,10 +2,11 @@
 import RoleGuard from '@/components/RoleGuard';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import {
   AlertTriangle, CheckCircle2, Target, MessageSquare,
   ArrowUpRight, Sparkles, FileText,
-  Activity, TrendingUp, BookOpen, UserCog,
+  Activity, TrendingUp, BookOpen, UserCog, UserPlus,
 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, ReferenceLine, YAxis } from 'recharts';
 import MockExamChart, { type MockExamRow } from '@/components/charts/MockExamChart';
@@ -211,6 +212,9 @@ function DirectorPage() {
           <button onClick={() => setEditOpen(true)} className="px-3 py-1.5 bg-white border border-stone-300 text-slate-700 rounded hover:bg-stone-50 flex items-center gap-1">
             <UserCog size={12} /> 학생 정보 수정
           </button>
+          <Link href="/students/new" className="px-3 py-1.5 bg-white border border-stone-300 text-slate-700 rounded hover:bg-stone-50 flex items-center gap-1">
+            <UserPlus size={12} /> 학생 등록
+          </Link>
         </div>
       </div>
 

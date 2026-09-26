@@ -39,6 +39,22 @@ export default function TopBar() {
           <div className="text-xs text-slate-400">종로엠스쿨 학생 종합관리 시스템</div>
         </div>
         <div className="flex items-center gap-5">
+          {(role === 'DIRECTOR' || role === 'INSTRUCTOR') && (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/students"
+                className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${pathname === '/students' ? 'bg-slate-700 text-white' : 'bg-slate-800 text-slate-300 hover:text-white'}`}
+              >
+                학생 목록
+              </Link>
+              <Link
+                href="/students/new"
+                className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${pathname.startsWith('/students/new') ? 'bg-slate-700 text-white' : 'bg-slate-800 text-slate-300 hover:text-white'}`}
+              >
+                학생 등록
+              </Link>
+            </div>
+          )}
           {role === 'DIRECTOR' && (
             <Link
               href="/director/users"

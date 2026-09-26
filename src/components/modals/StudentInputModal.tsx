@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Target, Activity, TrendingUp, Map, Save } from 'lucide-react';
 import { subjectsForGrade, averageOfSubjects, type SubjectField } from '@/lib/subjects';
 
@@ -19,6 +19,9 @@ function stagesFromGrade(grade?: string): string[] {
 }
 const RISK_LABELS = ['출결', '과제 수행률', '학습 태도', '종합 이탈위험'] as const;
 
+interface RoadmapEntry { stage: string; label?: string; desc?: string; status?: string }
+interface RiskEntry { label: string; value?: string; detail?: string; tone?: string }
+
 const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300';
 
 export default function StudentInputModal({ studentId, studentName, grade, onClose, onSaved }: Props) {
@@ -28,6 +31,7 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // 목표
   const [goal, setGoal] = useState({
@@ -70,6 +74,51 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
       return { ...prev, [label]: next };
     });
   };
+
+  // 지금 값을 채워 놓고 바꿀 부분만 고치게 한다.
+  // 저장은 여전히 새 기록으로 쌓이므로(additive) 이력은 그대로 남는다.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/students/${studentId}`)
+      .then(r => r.json())
+      .then((d) => {
+        if (cancelled || !d || d.error) return;
+        setGoal({
+          finalGoalSchool: d.finalGoalSchool ?? '',
+          finalGoalDetail: d.finalGoalDetail ?? '',
+          finalGoalTrack: d.finalGoalTrack ?? '',
+          midGoalSchool: d.midGoalSchool ?? '',
+          midGoalDetail: d.midGoalDetail ?? '',
+          midGoalTrack: d.midGoalTrack ?? '',
+          reason: '',
+        });
+        setOverallReadiness(d.overallReadiness != null ? String(d.overallReadiness) : '');
+        setPeerAverage(d.peerAverage != null ? String(d.peerAverage) : '');
+        setEnrolledMonths(d.enrolledMonths != null ? String(d.enrolledMonths) : '');
+
+        const t = (d.subjectTargets ?? {}) as Record<string, number>;
+        setTargets(Object.fromEntries(Object.entries(t).map(([k, v]) => [k, String(v)])));
+
+        const roadmap = Array.isArray(d.roadmap) ? d.roadmap as RoadmapEntry[] : [];
+        if (roadmap.length > 0) {
+          setRoadmapStages(Object.fromEntries(
+            roadmap.map(r => [r.stage, { label: r.label ?? '', desc: r.desc ?? '' }])
+          ));
+          const cur = roadmap.find(r => r.status === 'current');
+          if (cur) setCurrentStage(cur.stage);
+        }
+
+        const signals = Array.isArray(d.riskSignals) ? d.riskSignals as RiskEntry[] : [];
+        if (signals.length > 0) {
+          setRisk(Object.fromEntries(
+            signals.map(r => [r.label, { value: r.value ?? '', detail: r.detail ?? '', tone: r.tone === 'risk' ? 'risk' as const : 'good' as const }])
+          ));
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [studentId]);
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -163,12 +212,17 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
           <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
             <div>
               <div className="serif-ko text-lg font-bold text-slate-900">{studentName} · 종합 현황 입력</div>
-              <div className="text-xs text-slate-500">입력한 값은 새 기록으로 추가되며, 기존 데이터를 덮어쓰지 않습니다</div>
+              <div className="text-xs text-slate-500">현재 값이 채워져 있습니다. 바꿀 부분만 고치면 됩니다 — 저장하면 새 기록으로 쌓여 이력이 남습니다</div>
             </div>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {loading && (
+              <div className="py-16 text-center text-sm text-slate-400">현재 값을 불러오는 중...</div>
+            )}
+            {!loading && (
+            <>
             {/* 목표 */}
             <section>
               <div className="flex items-center gap-2 mb-3"><Target size={14} className="text-amber-600" /><div className="text-sm font-bold text-slate-900">목표 구조</div></div>
@@ -274,6 +328,8 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
               </div>
             </section>
 
+            </>
+            )}
             {error && <div className="text-xs text-red-600">{error}</div>}
             {saved && <div className="text-xs text-emerald-600 font-semibold">저장되었습니다</div>}
           </div>

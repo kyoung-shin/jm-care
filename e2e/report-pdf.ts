@@ -169,6 +169,14 @@ async function createFixture(): Promise<Fixture> {
     sentAt: new Date().toISOString(),
   }) });
 
+  // 현황 — 기존값이 입력 화면에 채워지는지 보기 위해
+  await api(dir, `/api/students/${studentId}/status-updates`, { method: 'POST', body: JSON.stringify({
+    overallReadiness: 72,
+    peerAverage: 80,
+    subjectTargets: { 국어: 90, 영어: 91, 수학: 92, 사회: 88, 과학: 95 },
+    riskSignals: [{ label: '출결', value: '양호', detail: 'E2E 출결 메모', tone: 'good' }],
+  }) });
+
   // 상담 기록 — 강사 화면에서 내용 확인이 되는지 보기 위해
   await api(dir, `/api/students/${studentId}/counselings`, { method: 'POST', body: JSON.stringify({
     date: '2026.03.20', type: '정기', topic: 'E2E 상담 주제',
@@ -603,6 +611,52 @@ async function runInstructor(fx: Fixture, browser: Browser) {
     });
     ok('잘못된 일시 형식 → 400', bad.status() === 400, `status=${bad.status()}`);
   }
+
+  // ── 학생 등록 진입 버튼 · 목록에서 조회 · 기존값 유지 입력 ──
+  console.log('\n[강사] 학생 등록 진입 · 목록 조회 · 기존값 유지');
+  ok('상단바에 "학생 목록" 노출', await ip.getByRole('link', { name: /학생 목록/ }).count() > 0);
+  ok('상단바에 "학생 등록" 노출', await ip.getByRole('link', { name: /^학생 등록$/ }).count() > 0);
+  ok('담당 학생 카드에 "학생 등록" 노출', await ip.locator('a[href="/students/new"]').count() > 0);
+
+  await ip.getByRole('link', { name: /학생 목록/ }).first().click();
+  await ip.waitForURL(u => u.pathname === '/students', { timeout: 30_000 });
+  await ip.waitForTimeout(2500);
+  await shot(ip, 'instructor-student-list');
+  ok('학생 목록 화면 진입', ip.url().includes('/students'));
+  ok('목록에 "보기" 버튼 노출', await ip.getByRole('button', { name: /^보기$/ }).count() > 0);
+  ok('목록에 "학생 등록" 버튼 노출', await ip.locator('a[href="/students/new"]').count() > 0);
+
+  // 목록에서 바로 상세(성적·상담) 확인
+  await ip.locator(`[data-student-id="${fx.studentId}"]`).getByRole('button', { name: /^보기$/ }).click();
+  await ip.waitForTimeout(3000);
+  ok('목록에서 연 상세에 상담 내용 노출', await ip.locator('text=E2E 상담 주제').count() > 0);
+  await ip.getByRole('button', { name: /^닫기$/ }).first().click();
+  await ip.waitForTimeout(1000);
+
+  // 현황 입력 — 기존 값이 채워져 있어야 한다
+  await ip.locator(`[data-student-id="${fx.studentId}"]`).getByRole('button', { name: /^입력$/ }).click();
+  await ip.waitForSelector('text=바꿀 부분만', { timeout: 30_000 });
+  await ip.waitForTimeout(2500);
+  await shot(ip, 'instructor-status-input-prefilled');
+  const goalInput = ip.locator('input[placeholder="최종 목표 학교"]');
+  ok('현황 입력에 기존 최종 목표가 채워짐', (await goalInput.inputValue()) === '고려대학교', await goalInput.inputValue());
+  const targetKorean = ip.locator('input[type="number"]').first();
+  ok('과목 목표점수도 기존 값이 채워짐', (await targetKorean.inputValue()).length > 0, await targetKorean.inputValue());
+
+  // 한 곳만 바꿔 저장 → 나머지는 유지되어야 한다
+  await goalInput.fill('연세대학교');
+  await ip.getByRole('button', { name: /저장/ }).last().click();
+  await ip.waitForTimeout(3500);
+  const afterSave = await (await ip.request.get(`${BASE}/api/students/${fx.studentId}`)).json();
+  ok('바꾼 값만 반영됨 (최종 목표)', afterSave.finalGoalSchool === '연세대학교', afterSave.finalGoalSchool);
+  ok('건드리지 않은 값은 유지됨 (세부 목표)', afterSave.finalGoalDetail === '공학계열', afterSave.finalGoalDetail);
+  ok('건드리지 않은 값은 유지됨 (과목 목표)', !!afterSave.subjectTargets && Object.keys(afterSave.subjectTargets).length > 0,
+    JSON.stringify(afterSave.subjectTargets));
+
+  await ip.goto(`${BASE}/instructor`, { waitUntil: 'networkidle' });
+  await ip.waitForTimeout(2500);
+  await ip.locator('text=상담 예약 요청').scrollIntoViewIfNeeded();
+  await ip.waitForTimeout(800);
 
   // 학부모 변경 시나리오를 위해 다시 확정해 둔다.
   // 거절 상태에서는 슬롯이 접혀 있으므로 "다시 처리"로 펼친 뒤 고른다.
