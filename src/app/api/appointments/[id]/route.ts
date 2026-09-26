@@ -19,7 +19,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
 
-    // 예약은 학생에 딸려 있다. 그 학생을 다룰 수 있는 직원만 확정·변경·거절할 수 있다.
+    // 예약은 학생에 딸려 있다. 접근 권한은 그 학생 기준으로 판정한다.
     const appointment = await prisma.appointmentRequest.findUnique({
       where: { id },
       select: {
@@ -34,11 +34,49 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     });
     if (!appointment) return NextResponse.json({ error: '상담 예약을 찾을 수 없습니다' }, { status: 404 });
 
+    // 조회 권한이 있으면 학부모도 희망 일시를 다시 제안할 수 있다.
+    // 확정·거절은 아래에서 직원 권한을 따로 확인한다.
     const access = await authorizeStudentAccess(appointment.studentId);
     if (!access.ok) return studentAccessError(access);
+
+    const body = await req.json();
+
+    // 학부모가 희망 일시를 다시 제안하는 경우. 확정된 건이라도 다시 제안할 수 있고,
+    // 그러면 검토 중으로 돌아가며 강사 일정에서도 내려간다.
+    if (body.slot1 !== undefined || body.slot2 !== undefined || body.slot3 !== undefined) {
+      const slots = [body.slot1, body.slot2, body.slot3];
+      if (slots.some(s => typeof s !== 'string' || !s.trim())) {
+        return NextResponse.json({ error: '희망 일시 3개를 모두 입력해 주세요' }, { status: 400 });
+      }
+      const bad = slots.find(s => !parseSlot(s));
+      if (bad) {
+        return NextResponse.json(
+          { error: `일시 형식이 올바르지 않습니다: ${bad} (예: 2026.09.28(월) 14:00)` },
+          { status: 400 }
+        );
+      }
+
+      const reproposed = await prisma.appointmentRequest.update({
+        where: { id },
+        data: {
+          slot1: slots[0].trim(),
+          slot2: slots[1].trim(),
+          slot3: slots[2].trim(),
+          status: 'pending',
+          confirmedSlot: null,
+        },
+      });
+      // 이전에 합의된 일시는 더 이상 유효하지 않으므로 강사 일정에서 뺀다
+      const linked = await prisma.scheduleEvent.findUnique({ where: { appointmentId: id } });
+      if (linked) await prisma.scheduleEvent.delete({ where: { id: linked.id } });
+
+      return NextResponse.json(reproposed);
+    }
+
+    // 여기부터는 강사·원장이 확정/거절하는 경로
     if (!access.canWrite) return writeForbidden();
 
-    const { status, confirmedSlot } = await req.json();
+    const { status, confirmedSlot } = body;
     if (!['confirmed', 'declined'].includes(status)) {
       return NextResponse.json({ error: 'status는 confirmed 또는 declined여야 합니다' }, { status: 400 });
     }

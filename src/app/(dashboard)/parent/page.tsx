@@ -67,6 +67,12 @@ function relativeTimeKo(dateStr: string): string {
   return `${months}개월 전 작성`;
 }
 
+const GRADE_ORDER = ['초1', '초2', '초3', '초4', '초5', '초6', '중1', '중2', '중3', '고1', '고2', '고3'];
+function gradeRank(grade?: string | null): number {
+  const i = grade ? GRADE_ORDER.indexOf(grade) : -1;
+  return i === -1 ? -1 : i;
+}
+
 function computeGrowth(mockExams: RealMockExam[], grade?: string | null) {
   if (mockExams.length < 2) return null;
   const first = mockExams[0];
@@ -125,6 +131,8 @@ export default function ParentPage() {
   const [reportOpen, setReportOpen] = useState(false);
   const [openReportId, setOpenReportId] = useState<string | null>(null);
   const [bookingType, setBookingType] = useState<'phone' | 'in_person' | null>(null);
+  // 기존 예약의 희망 일시를 바꾸는 중인 건
+  const [editingAppointment, setEditingAppointment] = useState<RealAppointment | null>(null);
 
   const reloadChild = (id: string) => {
     fetch(`/api/students/${id}`).then(r => r.json()).then(full => { if (!full.error) setChild(full); }).catch(() => {});
@@ -143,8 +151,9 @@ export default function ParentPage() {
       if (me.name) setParentName(me.name);
       const children = await fetch(`/api/students?parentId=${me.id}`).then(r => r.json());
       if (!Array.isArray(children) || children.length === 0) { setLoading(false); return; }
-      // 학년이 높은 자녀부터 보여 준다
-      const sorted = [...children].sort((a, b) => (b.grade ?? '').localeCompare(a.grade ?? ''));
+      // 학년이 높은 자녀부터 보여 준다. 문자열 비교로는 초/중/고 순서가 나오지 않아
+      // 학제 순서를 명시적으로 쓴다.
+      const sorted = [...children].sort((a, b) => gradeRank(b.grade) - gradeRank(a.grade));
       setSiblings(sorted.map(c => ({ id: c.id, name: c.name, grade: c.grade })));
       const first = sorted[0];
       setChildId(first.id);
@@ -477,11 +486,19 @@ export default function ParentPage() {
                     {child.appointmentRequests.slice(0, 3).map(a => {
                       const cfg = bookingStatusConfig[a.status] ?? bookingStatusConfig.pending;
                       return (
-                        <div key={a.id} className="flex items-center justify-between text-[11px]">
-                          <div className="text-slate-300">
+                        <div key={a.id} className="flex items-center justify-between gap-2 text-[11px]">
+                          <div className="text-slate-300 min-w-0 truncate">
                             {a.type === 'phone' ? '전화' : '대면'} · {a.status === 'confirmed' && a.confirmedSlot ? a.confirmedSlot : a.slot1}
                           </div>
-                          <div className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${cfg.bg} ${cfg.text}`}>{cfg.label}</div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={() => setEditingAppointment(a)}
+                              className="text-[10px] px-1.5 py-0.5 rounded border border-white/20 text-slate-300 hover:text-white hover:border-white/40 transition-colors"
+                            >
+                              일시 변경
+                            </button>
+                            <div className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</div>
+                          </div>
                         </div>
                       );
                     })}
@@ -501,6 +518,15 @@ export default function ParentPage() {
           studentId={child.id}
           reportId={openReportId ?? undefined}
           onClose={() => { setReportOpen(false); setOpenReportId(null); }}
+        />
+      )}
+      {editingAppointment && childId && (
+        <AppointmentRequestModal
+          studentId={childId}
+          type={editingAppointment.type === 'phone' ? 'phone' : 'in_person'}
+          appointment={editingAppointment}
+          onClose={() => setEditingAppointment(null)}
+          onSaved={() => { setEditingAppointment(null); reloadChild(childId); }}
         />
       )}
       {bookingType && childId && (

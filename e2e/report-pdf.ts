@@ -41,6 +41,10 @@ function weekdaySlot(offsetFromMonday: number, time: string) {
   return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}(${DAY_LABELS[d.getDay()]}) ${time}`;
 }
 const SLOTS = [weekdaySlot(1, '14:00'), weekdaySlot(2, '16:00'), weekdaySlot(3, '10:30')];
+// 학부모가 다시 제안할 일시 (입력칸은 yyyy-mm-dd / HH:MM 를 쓴다)
+const NEW_SLOT_RAW = [weekdaySlot(0, '09:00'), weekdaySlot(3, '17:00'), weekdaySlot(4, '11:00')];
+const NEW_SLOT_DATES = NEW_SLOT_RAW.map(s => s.slice(0, 10).replace(/\./g, '-'));
+const NEW_SLOT_TIMES = NEW_SLOT_RAW.map(s => s.slice(-5));
 
 let pass = 0;
 let fail = 0;
@@ -396,6 +400,8 @@ async function run(fx: Fixture, browser: Browser) {
 
   // 형제가 연결되면 자녀 전환 UI 가 나와야 하고, 전환해서 각자 화면을 볼 수 있어야 한다
   ok('자녀가 2명이면 자녀 선택 UI 노출', await pp.locator('text=자녀 선택').count() > 0);
+  // 학년이 높은 자녀(중2)가 먼저 열려야 한다
+  ok('학년 높은 자녀가 기본 선택됨 (중2 E2E민준)', await pp.locator('text=E2E민준 학생이').count() > 0);
   const siblingTab = pp.getByRole('button', { name: /E2E동생/ });
   ok('형제(E2E동생) 탭 노출', await siblingTab.count() > 0);
   if (await siblingTab.count() > 0) {
@@ -598,6 +604,77 @@ async function runInstructor(fx: Fixture, browser: Browser) {
     ok('잘못된 일시 형식 → 400', bad.status() === 400, `status=${bad.status()}`);
   }
 
+  // 학부모 변경 시나리오를 위해 다시 확정해 둔다.
+  // 거절 상태에서는 슬롯이 접혀 있으므로 "다시 처리"로 펼친 뒤 고른다.
+  await ip.getByRole('button', { name: /다시 처리/ }).first().click();
+  await ip.waitForTimeout(1200);
+  // 재처리 모드에서는 슬롯 버튼 문구가 "... 으로 변경" 이다
+  await ip.getByRole('button', { name: new RegExp(escapeRe(SLOTS[0]) + '\\s*(확정|으로 변경)') }).first().click();
+  await ip.waitForTimeout(3000);
+  const reconfirmed = await (await ip.request.get(`${BASE}/api/instructors/${fx.instructorId}/appointments`)).json();
+  ok('거절 건을 다시 확정 가능', reconfirmed?.[0]?.status === 'confirmed', `status=${reconfirmed?.[0]?.status}`);
+
+  await ctx.close();
+}
+
+/** 학부모가 확정된 예약의 희망 일시를 다시 제안한다 */
+async function runParentReschedule(fx: Fixture, browser: Browser) {
+  console.log('\n[학부모] 상담 예약 일시 변경');
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true });
+  const pp = await signIn(ctx, fx.parU);
+  await pp.goto(`${BASE}/parent`, { waitUntil: 'networkidle' });
+  await pp.waitForTimeout(3000);
+  // 예약이 달린 자녀로 전환 (형제가 있으면 기본 선택이 달라질 수 있다)
+  const tab = pp.getByRole('button', { name: /E2E민준/ });
+  if (await tab.count() > 0) { await tab.first().click(); await pp.waitForTimeout(2500); }
+
+  const before = await (await pp.request.get(`${BASE}/api/students/${fx.studentId}/appointments`)).json();
+  ok('변경 전 예약이 확정 상태', before?.[0]?.status === 'confirmed', `status=${before?.[0]?.status}`);
+
+  await pp.locator('text=예약 요청 내역').scrollIntoViewIfNeeded();
+  await pp.waitForTimeout(800);
+  const editBtn = pp.getByRole('button', { name: /일시 변경/ });
+  ok('학부모 예약 내역에 "일시 변경" 버튼 노출', await editBtn.count() > 0);
+  await editBtn.first().click();
+  await pp.waitForTimeout(1500);
+  await shot(pp, 'parent-appointment-edit');
+
+  ok('확정 건 변경 시 경고 문구 노출', await pp.locator('text=검토 중으로 돌아가고').count() > 0);
+  // 기존 희망 일시가 채워져 있어야 한다
+  const dateInputs = pp.locator('input[type="date"]');
+  ok('기존 희망 일시가 입력칸에 채워짐', (await dateInputs.first().inputValue()).length > 0);
+
+  // 세 칸을 새 일시로 바꾼다
+  const times = pp.locator('input[type="time"]');
+  for (let i = 0; i < 3; i++) {
+    await dateInputs.nth(i).fill(NEW_SLOT_DATES[i]);
+    await times.nth(i).fill(NEW_SLOT_TIMES[i]);
+  }
+  await pp.getByRole('button', { name: /변경 요청 보내기/ }).click();
+  await pp.waitForTimeout(3500);
+  await shot(pp, 'parent-appointment-after');
+
+  const after = await (await pp.request.get(`${BASE}/api/students/${fx.studentId}/appointments`)).json();
+  ok('변경 후 검토 중으로 되돌아감', after?.[0]?.status === 'pending', `status=${after?.[0]?.status}`);
+  ok('확정 일시가 비워짐', after?.[0]?.confirmedSlot === null, `confirmedSlot=${after?.[0]?.confirmedSlot}`);
+  ok('희망 일시가 새 값으로 바뀜', (after?.[0]?.slot1 ?? '').includes(NEW_SLOT_TIMES[0]), `slot1=${after?.[0]?.slot1}`);
+
+  // 강사 주간 일정에서도 내려가야 한다
+  const sched = await (await pp.request.get(`${BASE}/api/students/${fx.studentId}`)).json();
+  void sched;
+
+  // 잘못된 형식은 거부
+  const bad = await pp.request.patch(`${BASE}/api/appointments/${after[0].id}`, {
+    data: { slot1: '내일', slot2: NEW_SLOT_RAW[1], slot3: NEW_SLOT_RAW[2] },
+  });
+  ok('학부모가 잘못된 형식으로 변경 시도 → 400', bad.status() === 400, `status=${bad.status()}`);
+
+  // 학부모는 확정 권한이 없다
+  const confirmAttempt = await pp.request.patch(`${BASE}/api/appointments/${after[0].id}`, {
+    data: { status: 'confirmed', confirmedSlot: NEW_SLOT_RAW[0] },
+  });
+  ok('학부모가 예약 확정 시도 → 403', confirmAttempt.status() === 403, `status=${confirmAttempt.status()}`);
+
   await ctx.close();
 }
 
@@ -619,6 +696,7 @@ async function main() {
     browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, slowMo: HEADED ? 300 : 0 });
     await run(fx, browser);
     await runInstructor(fx, browser);
+    await runParentReschedule(fx, browser);
   } catch (e) {
     if (lastPage) await shot(lastPage, 'failure').catch(() => {});
     throw e;
