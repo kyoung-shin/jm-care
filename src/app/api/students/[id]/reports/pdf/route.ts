@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeStudentAccess } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { buildReportModel } from '@/lib/report-data';
+import { buildReportModel, resolveCriteria, resolveRoadmap } from '@/lib/report-data';
 import { buildReportPdf } from '@/server/report-pdf';
 
 // 폰트 임베드 때문에 Node 런타임이 필요하다(Edge 불가)
@@ -56,6 +56,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     };
     const model = buildReportModel(source, Number.isFinite(examIdx) ? examIdx : -1);
 
+    // 본사가 업로드한 판정 기준표·학년 로드맵을 리포트에 반영한다
+    const [criteriaRows, roadmapRows] = await Promise.all([
+      prisma.admissionCriteria.findMany({ orderBy: { percentile: 'desc' } }),
+      prisma.goalRoadmapTemplate.findMany({ orderBy: { sortOrder: 'asc' } }),
+    ]);
+    const criteria = resolveCriteria(model.latestExam?.avg ?? null, criteriaRows);
+    const roadmap = resolveRoadmap(student.finalGoalSchool, student.grade, roadmapRows);
+
     // 발송된 리포트를 여는 경우 저장된 기간/메시지/공개 범위를 그대로 따른다.
     // 원장이 백분위를 빼고 발송했다면 학부모가 받는 PDF 에도 숫자가 들어가면 안 된다.
     let period = model.period;
@@ -91,6 +99,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       actions: model.actions,
       message,
       includeGrades,
+      criteria,
+      roadmap: roadmap
+        ? { goal: roadmap.goal, stage: roadmap.stage, steps: roadmap.steps.map(x => ({ stage: x.stage, content: x.content })), currentIdx: roadmap.currentIdx }
+        : null,
     });
 
     const base = `JM-CARE_학습리포트_${sanitizeFilenamePart(student.name)}${period ? '_' + sanitizeFilenamePart(period) : ''}`;

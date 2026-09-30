@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
 import { statusConfig, actionStatusConfig } from '@/lib/dummy-data';
-import { buildReportModel, formatPeriodLabel } from '@/lib/report-data';
+import { buildReportModel, formatPeriodLabel, resolveCriteria, resolveRoadmap,
+  type CriteriaRow, type RoadmapRow } from '@/lib/report-data';
 import { subjectsForGrade } from '@/lib/subjects';
 import { computeScoreDomain, isWithinDomain } from '@/lib/chart-scale';
 
@@ -118,6 +119,9 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
 
   const [realStudent, setRealStudent] = useState<RealStudentData | null>(null);
   const [selectedExamIdx, setSelectedExamIdx] = useState(-1);
+  // 본사가 업로드한 판정 기준표·학년 로드맵
+  const [criteriaRows, setCriteriaRows] = useState<CriteriaRow[]>([]);
+  const [roadmapRows, setRoadmapRows] = useState<RoadmapRow[]>([]);
 
   // 실제 학생 데이터(목표·모의고사 성적 등) 로드
   useEffect(() => {
@@ -126,6 +130,17 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
       if (!d.error) setRealStudent(d);
     }).catch(() => {});
   }, [studentId]);
+
+  // 본사 기준표·로드맵 (없으면 해당 섹션을 그리지 않는다)
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/admin/admission-criteria').then(r => (r.ok ? r.json() : [])).catch(() => []),
+      fetch('/api/admin/goal-roadmaps').then(r => (r.ok ? r.json() : [])).catch(() => []),
+    ]).then(([c, r]) => {
+      if (Array.isArray(c)) setCriteriaRows(c);
+      if (Array.isArray(r)) setRoadmapRows(r);
+    });
+  }, []);
 
   // 학부모 모드: 실제 리포트 내용(기간/메시지)을 불러오고, 조회 시각을 기록
   useEffect(() => {
@@ -149,6 +164,8 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
   const visibleExams = model?.visibleExams ?? [];
   const period = isDirector ? (model?.period ?? '') : parentPeriod;
   const subjectDefs = subjectsForGrade(realStudent?.grade);
+  const criteria = resolveCriteria(model?.latestExam?.avg ?? null, criteriaRows);
+  const roadmapPlan = resolveRoadmap(realStudent?.finalGoalSchool, realStudent?.grade, roadmapRows);
 
   const handleSend = async () => {
     if (!studentId) { setSendError('발송 대상 학생 정보를 찾을 수 없습니다'); return; }
@@ -388,6 +405,56 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                           ))}
                         </div>
                       </section>
+
+                      {criteria && (
+                        <section className="bg-white border border-stone-200 rounded-xl p-5">
+                          <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-1.5 font-bold">
+                            <Target size={11} /> 목표 대비 전국 위치
+                          </div>
+                          <div className="flex items-end gap-6">
+                            <div>
+                              <div className="text-[11px] text-slate-500 mb-1">현재 위치</div>
+                              <div className="serif-ko text-2xl font-bold text-slate-900">{criteria.tierLabel}</div>
+                            </div>
+                            {!criteria.below && (
+                              <>
+                                <div>
+                                  <div className="text-[11px] text-slate-500 mb-1">기준 백분위</div>
+                                  <div className="text-lg font-bold num text-slate-700">{criteria.percentile} 이상</div>
+                                </div>
+                                {criteria.verdict && (
+                                  <div>
+                                    <div className="text-[11px] text-slate-500 mb-1">판정</div>
+                                    <div className="text-lg font-bold text-amber-700">{criteria.verdict}</div>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </section>
+                      )}
+
+                      {roadmapPlan && roadmapPlan.steps.length > 0 && (
+                        <section className="bg-white border border-stone-200 rounded-xl p-5">
+                          <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-1.5 font-bold">
+                            <BookOpen size={11} /> 학년별 학습 로드맵 — {roadmapPlan.goal}
+                          </div>
+                          <div className="space-y-2.5">
+                            {roadmapPlan.steps.map((step, i) => {
+                              const isNow = i === roadmapPlan.currentIdx;
+                              return (
+                                <div key={step.stage} className={`flex gap-3 rounded-lg p-3 border ${isNow ? 'border-amber-300 bg-amber-50/50' : 'border-stone-200'}`}>
+                                  <div className={`text-xs font-bold shrink-0 w-20 ${isNow ? 'text-amber-800' : 'text-slate-500'}`}>
+                                    {step.stage}
+                                    {isNow && <div className="text-[9px] font-semibold mt-0.5">현재 단계</div>}
+                                  </div>
+                                  <div className={`text-xs leading-relaxed ${isNow ? 'text-slate-900' : 'text-slate-600'}`}>{step.content}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      )}
 
                       <section>
                         <div className="flex items-center justify-between mb-3">

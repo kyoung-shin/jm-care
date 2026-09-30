@@ -68,6 +68,15 @@ export interface ReportInput {
   actions: ReportAction[];
   message: string;
   includeGrades: boolean;
+  /** 업로드된 판정 기준표로 계산한 전국 위치 */
+  criteria?: { tierLabel: string; verdict: string; percentile: number; below: boolean } | null;
+  /** 업로드된 목표별 학년 로드맵 */
+  roadmap?: {
+    goal: string;
+    stage: string | null;
+    steps: { stage: string; content: string }[];
+    currentIdx: number;
+  } | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -278,6 +287,37 @@ export async function buildReportPdf(data: ReportInput): Promise<Uint8Array> {
       if (tail) d.draw(tail, M + 12, y - 11, 8, MUTED);
       d.y = y - 24;
     }
+  }
+
+  // ── 목표 대비 전국 위치 (업로드된 기준표) ───────────────────
+  if (data.criteria) {
+    d.sectionTitle('목표 대비 전국 위치');
+    const c = data.criteria;
+    d.band(40);
+    const top = d.y;
+    d.draw('현재 위치', M + 12, top - 15, 8, MUTED);
+    d.draw(c.below ? c.tierLabel : `${c.tierLabel}`, M + 12, top - 31, 13, INK, true);
+    if (!c.below) {
+      d.draw(`기준 백분위 ${c.percentile} 이상`, M + CONTENT_W / 2, top - 15, 8, MUTED);
+      if (c.verdict) d.draw(`판정 ${c.verdict}`, M + CONTENT_W / 2, top - 31, 12, ACCENT, true);
+    }
+    d.y = top - 40 - 6;
+  }
+
+  // ── 목표별 학년 로드맵 (업로드된 표) ────────────────────────
+  if (data.roadmap && data.roadmap.steps.length > 0) {
+    d.sectionTitle(`학년별 학습 로드맵 — ${data.roadmap.goal}`);
+    data.roadmap.steps.forEach((step, i) => {
+      d.ensure(34);
+      const isNow = i === data.roadmap!.currentIdx;
+      const y = d.y - 11;
+      d.page.drawCircle({ x: M + 3, y: y + 3, size: isNow ? 3 : 1.8, color: isNow ? ACCENT : LINE });
+      d.draw(step.stage + (isNow ? '  (현재 단계)' : ''), M + 12, y, 9.5, isNow ? INK : MUTED, isNow);
+      // 라벨을 그린 만큼 커서를 내려야 본문이 겹치지 않는다
+      d.y = y - 3;
+      d.paragraph(step.content, 8.5, isNow ? INK : MUTED, M + 12, CONTENT_W - 12);
+      d.gap(4);
+    });
   }
 
   // ── 강사 메시지 ────────────────────────────────────────────

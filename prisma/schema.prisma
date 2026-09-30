@@ -48,6 +48,9 @@ model AdmissionSchool {
   id         String                @id @default(cuid())
   name       String
   dept       String?
+  // CSV 일괄 업로드로 들어오는 분류값
+  level      String? // 대학 / 고교
+  region     String?
   year       Int
   typesCount Int                   @default(0)
   status     AdmissionSchoolStatus @default(DRAFT)
@@ -56,6 +59,8 @@ model AdmissionSchool {
   createdAt  DateTime              @default(now())
   updatedAt  DateTime              @updatedAt
   tracks     AdmissionTrack[]
+
+  @@unique([name, year])
 }
 
 model AdmissionTrack {
@@ -71,6 +76,21 @@ model AdmissionTrack {
   targetGrade       Float?
   targetCsatMinRate Int?
   targetRecordCount Int?
+  // CSV 일괄 업로드 항목
+  dept               String? // 계열/전공
+  extraCriteria      String? // 추가 반영
+  recordRatio        String? // 반영비율(학생부)
+  reflectKorean      String? // O / -
+  reflectMath        String?
+  reflectEnglish     String?
+  reflectSocial      String?
+  reflectScience     String?
+  reflectHistory     String?
+  reflectRecord      String?
+  expectedGrade      Float? // 예상입결(내신등급)
+  expectedStandard   Int? // 예상입결(표준점수)
+  expectedPercentile Float? // 예상입결(백분위)
+  verifiedAt         String?
   status            AdmissionSchoolStatus @default(DRAFT)
   source            String?
   updatedBy         String?
@@ -252,4 +272,28 @@ model AppointmentRequest {
   confirmedSlot String?
   requestedBy   String?
   createdAt     DateTime @default(now())
+}
+
+/// 학생 성적 대비 진학 판정 기준 (criteria.csv 업로드)
+/// 백분위 구간마다 전국 라인과 판정을 대응시킨다.
+model AdmissionCriteria {
+  id         String   @id @default(cuid())
+  verdict    String // 안정 / 적정 / 소신 / 도전 / 위험
+  percentile Float // 현재성적(백분위) 하한
+  tierLabel  String // 전국성적 라인 (예: SKY 라인)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+}
+
+/// 목표별 학년 로드맵 (roadmap.csv 업로드)
+/// 학생 리포트에서 목표·학년에 맞는 학습 내용을 보여 주는 데 쓴다.
+model GoalRoadmapTemplate {
+  id        String   @id @default(cuid())
+  goal      String // 목표(대학/고교)
+  stage     String // 초등 고학년 / 중1 / 중2 / 중3
+  content   String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([goal, stage])
 }

@@ -49,6 +49,7 @@ const NEW_SLOT_TIMES = NEW_SLOT_RAW.map(s => s.slice(-5));
 let pass = 0;
 let fail = 0;
 let lastPage: Page | null = null;
+let FIXTURE_PAR_USER = '';
 const ok = (name: string, cond: boolean, detail = '') => {
   if (cond) { pass++; console.log(`  PASS  ${name}`); }
   else { fail++; console.log(`  FAIL  ${name}${detail ? ` — ${detail}` : ''}`); }
@@ -198,6 +199,29 @@ async function createFixture(): Promise<Fixture> {
   const otherIns = (staff.data as { id: string; branchId: string | null }[] | null)?.find(u => u.branchId && u.branchId !== branchId) ?? null;
 
   return { branchId, studentId, siblingId, insU, instructorId, dirU, parU, otherStudentId: other?.id ?? null, otherInstructorId: otherIns?.id ?? null };
+}
+
+interface CriteriaBackup { verdict: string; percentile: number; tierLabel: string; sortOrder: number }
+interface RoadmapBackup { goal: string; stage: string; content: string; sortOrder: number }
+
+/** CSV 업로드 검사로 갈아엎은 전역 테이블을 원래대로 되돌린다 */
+async function restoreGlobalTables(criteria: CriteriaBackup[], roadmap: RoadmapBackup[]) {
+  await prisma.$transaction([
+    prisma.admissionCriteria.deleteMany({}),
+    ...(criteria.length
+      ? [prisma.admissionCriteria.createMany({
+          data: criteria.map(c => ({ verdict: c.verdict, percentile: c.percentile, tierLabel: c.tierLabel, sortOrder: c.sortOrder })),
+        })]
+      : []),
+    prisma.goalRoadmapTemplate.deleteMany({}),
+    ...(roadmap.length
+      ? [prisma.goalRoadmapTemplate.createMany({
+          data: roadmap.map(r => ({ goal: r.goal, stage: r.stage, content: r.content, sortOrder: r.sortOrder })),
+        })]
+      : []),
+  ]);
+  // 업로드 검사로 만든 학교도 지운다
+  await prisma.admissionSchool.deleteMany({ where: { name: { startsWith: 'E2E' } } });
 }
 
 // 'ZZ_자동검증_' 지점과 거기 딸린 계정·학생·가입신청만 지운다
@@ -673,6 +697,101 @@ async function runInstructor(fx: Fixture, browser: Browser) {
   await ctx.close();
 }
 
+/**
+ * 본사 CSV 업로드 3종.
+ * 기준표·로드맵은 전역 테이블이라 업로드가 기존 내용을 갈아엎는다.
+ * 검사 전에 원본을 떠 두고 끝나면 반드시 되돌린다.
+ */
+async function runAdminCsv(browser: Browser) {
+  console.log('\n[본사] 입시 DB CSV 업로드');
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/sign-in`, { waitUntil: 'networkidle' });
+  await page.locator('input').first().fill(process.env.ADMIN_USERNAME!);
+  await page.locator('input[type="password"]').first().fill(process.env.ADMIN_PASSWORD!);
+  await page.locator('button[type="submit"], button:has-text("로그인")').first().click();
+  await page.waitForURL(u => !u.pathname.includes('sign-in'), { timeout: 30_000 });
+
+  // 원본 백업
+  const backupCriteria = await (await page.request.get(`${BASE}/api/admin/admission-criteria`)).json();
+  const backupRoadmap = await (await page.request.get(`${BASE}/api/admin/goal-roadmaps`)).json();
+  console.log(`      백업 — 기준 ${backupCriteria.length}건 / 로드맵 ${backupRoadmap.length}건`);
+
+  try {
+    await page.goto(`${BASE}/admin/hq`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2500);
+    await page.locator('text=전형 입력 폼').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(600);
+    await shot(page, 'admin-upload-buttons');
+
+    for (const label of ['학년별 공부내용', '학교별 기준', '파일업로드']) {
+      ok(`"${label}" 버튼 노출`, await page.getByRole('button', { name: new RegExp(label) }).count() > 0);
+    }
+    // 버튼 순서: 학년별 공부내용 → 학교별 기준 → 파일업로드 → 초안 저장
+    const labels = await page.locator('button').filter({ hasText: /학년별 공부내용|학교별 기준|파일업로드|초안 저장/ }).allInnerTexts();
+    const order = labels.map(t => t.trim()).filter(Boolean);
+    ok('버튼이 초안 저장 왼쪽에 순서대로 배치',
+      order.join('>').includes('학년별 공부내용') && order.indexOf('초안 저장') === order.length - 1,
+      order.join(' > '));
+
+    // 업로드 (엑셀에서 내보낸 형태 — 제목 행·따옴표 줄바꿈 포함)
+    const roadmapCsv = '학생 목표 설정,,,,\n,,,,\n목표별 학년 로드맵,,,,\n,,,,\n목표(대학/고교),초등 고학년,중1,중2,중3\nE2E목표대학,E2E초등내용,E2E중1내용,E2E중2내용,E2E중3내용\n';
+    const criteriaCsv = '리포트,,,,\n,,,,\n"목표대비\n판정기준","현재성적\n(백분위)","전국성적\n(백분위)",,\nE2E판정,88,E2E라인,,\nE2E낮음,60,E2E하위라인,,\n';
+    const admissionCsv = '입시 DB,,\n,,\n학교,학교급,지역,계열/전공,모집방법,전형명,전형유형,전형방법(요약),"기준\n(수능최저)","기준\n(한국사)",추가 반영,"반영비율\n(학생부)","반영여부\n(국어)","반영여부\n(수학)","반영여부\n(영어)","반영여부\n(사회)","반영여부\n(과학)","반영여부\n(한국사)","반영여부\n(내신)","에상입결\n(내신등급)","에상입결\n(표준점수)","에상입결\n(백분위)",출처,검증일,확인\nE2E대학교,대학,서울,인문,수시,E2E전형,학생부종합,서류100%,4개중3개합7,4등급이내,-,100%,O,O,O,-,O,O,O,1.5,-,95,E2E출처,2026-06-10,검증완료\n';
+
+    const upload = async (label: string, name: string, content: string) => {
+      const input = page.locator('input[type="file"]').nth(['학년별 공부내용', '학교별 기준', '파일업로드'].indexOf(label));
+      await input.setInputFiles({ name, mimeType: 'text/csv', buffer: Buffer.from(content, 'utf8') });
+      await page.waitForTimeout(4000);
+    };
+
+    await upload('학년별 공부내용', 'roadmap.csv', roadmapCsv);
+    const rm = await (await page.request.get(`${BASE}/api/admin/goal-roadmaps`)).json();
+    ok('로드맵 CSV 업로드 — 4칸 등록', rm.length === 4, `${rm.length}건`);
+    ok('로드맵 목표·학년 파싱', rm.some((r: { goal: string; stage: string; content: string }) => r.goal === 'E2E목표대학' && r.stage === '중2' && r.content === 'E2E중2내용'));
+
+    await upload('학교별 기준', 'criteria.csv', criteriaCsv);
+    const cr = await (await page.request.get(`${BASE}/api/admin/admission-criteria`)).json();
+    ok('기준 CSV 업로드 — 2구간 등록', cr.length === 2, `${cr.length}건`);
+    ok('기준 백분위 내림차순', cr[0]?.percentile === 88 && cr[1]?.percentile === 60, JSON.stringify(cr.map((x: {percentile:number}) => x.percentile)));
+
+    await upload('파일업로드', 'admission.csv', admissionCsv);
+    await page.waitForTimeout(2000);
+    const schools = await (await page.request.get(`${BASE}/api/admin/admission-schools`)).json();
+    const mine = schools.find((x: { name: string }) => x.name === 'E2E대학교');
+    ok('입시 전형 CSV 업로드 — 학교 등록', !!mine, `${schools.length}개교`);
+    ok('전형 수 반영', mine?.typesCount === 1, `typesCount=${mine?.typesCount}`);
+    ok('검증완료 상태 반영', mine?.status === 'VERIFIED', `status=${mine?.status}`);
+
+    // 잘못된 CSV 는 거부
+    const badInput = page.locator('input[type="file"]').nth(1);
+    await badInput.setInputFiles({ name: 'bad.csv', mimeType: 'text/csv', buffer: Buffer.from('아무말,두번째\n1,2\n', 'utf8') });
+    await page.waitForTimeout(2500);
+    ok('헤더 없는 CSV → 오류 안내', await page.locator('text=헤더를 찾지 못했습니다').count() > 0);
+    await shot(page, 'admin-upload-error');
+
+    // 비관리자는 업로드 불가
+    const parentCtx = await browser.newContext();
+    const ppage = await parentCtx.newPage();
+    await ppage.goto(`${BASE}/sign-in`, { waitUntil: 'networkidle' });
+    await ppage.locator('input').first().fill(FIXTURE_PAR_USER);
+    await ppage.locator('input[type="password"]').first().fill(PW);
+    await ppage.locator('button[type="submit"], button:has-text("로그인")').first().click();
+    await ppage.waitForURL(u => !u.pathname.includes('sign-in'), { timeout: 30_000 });
+    const forbidden = await ppage.request.post(`${BASE}/api/admin/goal-roadmaps`, {
+      multipart: { file: { name: 'x.csv', mimeType: 'text/csv', buffer: Buffer.from('목표,중1\nA,B\n') } },
+    });
+    ok('학부모가 CSV 업로드 시도 → 403', forbidden.status() === 403, `status=${forbidden.status()}`);
+    await parentCtx.close();
+  } finally {
+    // 원본 복원 — 업로드가 전역 테이블을 갈아엎으므로 반드시 되돌린다
+    await restoreGlobalTables(backupCriteria, backupRoadmap);
+    console.log('      원본 복원 완료');
+  }
+
+  await ctx.close();
+}
+
 /** 학부모가 확정된 예약의 희망 일시를 다시 제안한다 */
 async function runParentReschedule(fx: Fixture, browser: Browser) {
   console.log('\n[학부모] 상담 예약 일시 변경');
@@ -753,6 +872,8 @@ async function main() {
     await run(fx, browser);
     await runInstructor(fx, browser);
     await runParentReschedule(fx, browser);
+    FIXTURE_PAR_USER = fx.parU;
+    await runAdminCsv(browser);
   } catch (e) {
     if (lastPage) await shot(lastPage, 'failure').catch(() => {});
     throw e;

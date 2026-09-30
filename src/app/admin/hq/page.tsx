@@ -8,6 +8,7 @@ import AddBranchModal from '@/components/modals/AddBranchModal';
 import DeleteBranchModal from '@/components/modals/DeleteBranchModal';
 import AddSchoolModal from '@/components/modals/AddSchoolModal';
 import { registerBeforeLeaveSave } from '@/lib/beforeLeave';
+import CsvUploadButton from '@/components/admin/CsvUploadButton';
 
 const inputCls = 'w-full text-sm border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white';
 
@@ -347,6 +348,25 @@ function TrackInputForm({ schools }: { schools: AdmissionSchoolRow[] }) {
         <input value={source} onChange={e => setSource(e.target.value)} placeholder="출처 (예: 고려대 2027 입학전형시행계획)" className="text-[11px] text-slate-600 border border-transparent hover:border-stone-200 focus:border-stone-300 rounded px-1.5 py-1 focus:outline-none flex-1 mr-3" />
         <div className="flex items-center gap-2 shrink-0">
           {error && <div className="text-xs text-red-600">{error}</div>}
+          <CsvUploadButton
+            label="학년별 공부내용"
+            endpoint="/api/admin/goal-roadmaps"
+            hint="목표(대학/고교) × 학년 교차표 — 예: roadmap.csv"
+            summarize={d => `로드맵 ${d.count}칸 등록 · 목표 ${(d.goals as string[] | undefined)?.length ?? 0}종`}
+          />
+          <CsvUploadButton
+            label="학교별 기준"
+            endpoint="/api/admin/admission-criteria"
+            hint="판정 기준표 (백분위 → 전국 라인) — 예: criteria.csv"
+            summarize={d => `기준 ${d.count}구간 등록${(d.skipped as string[] | undefined)?.length ? ` · ${(d.skipped as string[]).length}행 건너뜀` : ''}`}
+          />
+          <CsvUploadButton
+            label="파일업로드"
+            endpoint="/api/admin/admission-schools/import"
+            hint="입시 전형 표 — 예: admission_process.csv"
+            summarize={d => `학교 ${d.schoolCount} · 전형 ${d.trackCount}건 등록`}
+            onDone={() => window.location.reload()}
+          />
           <button
             onClick={() => handleSave('DRAFT')}
             disabled={saving}

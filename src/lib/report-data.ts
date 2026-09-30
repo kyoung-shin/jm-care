@@ -122,3 +122,76 @@ export function buildReportModel(student: ReportStudentSource, selectedExamIdx =
     stats, subjects: subjectRows, subjectDefs: subjects, actions,
   };
 }
+
+// ── 업로드된 기준표·로드맵을 리포트에 반영하는 부분 ─────────────────
+
+export interface CriteriaRow { verdict: string; percentile: number; tierLabel: string }
+export interface RoadmapRow { goal: string; stage: string; content: string; sortOrder: number }
+
+/**
+ * 종합 백분위로 전국 라인과 판정을 찾는다.
+ * 기준표는 백분위 내림차순이고, 학생 점수 이하의 첫 구간이 그 학생의 위치다.
+ */
+export function resolveCriteria(percentile: number | null | undefined, table: CriteriaRow[]) {
+  if (percentile === null || percentile === undefined || table.length === 0) return null;
+  const sorted = [...table].sort((a, b) => b.percentile - a.percentile);
+  const hit = sorted.find(r => percentile >= r.percentile);
+  if (!hit) {
+    const lowest = sorted[sorted.length - 1];
+    return { tierLabel: `${lowest.tierLabel} 미만`, verdict: '', percentile: lowest.percentile, below: true };
+  }
+  return { tierLabel: hit.tierLabel, verdict: hit.verdict, percentile: hit.percentile, below: false };
+}
+
+/** 학년 → 로드맵 표의 구간명 */
+export function roadmapStageForGrade(grade?: string | null): string | null {
+  if (!grade) return null;
+  if (/^초[456]$/.test(grade)) return '초등 고학년';
+  if (/^초[123]$/.test(grade)) return '초등 고학년';
+  if (/^중[123]$/.test(grade)) return grade;
+  return null; // 고등학생은 표에 구간이 없다
+}
+
+/**
+ * 목표 문구로 로드맵 행을 고른다.
+ * 표의 목표명("고려대 등 상위권 대학")과 학생 목표("고려대학교")가 정확히 같지 않으므로
+ * 서로를 포함하는지, 안 되면 앞 두 글자가 겹치는지로 맞춘다.
+ */
+export function matchRoadmapGoal(goal: string | null | undefined, rows: RoadmapRow[]): string | null {
+  const goals = [...new Set(rows.map(r => r.goal))];
+  if (goals.length === 0) return null;
+  const g = (goal ?? '').replace(/\s+/g, '');
+  if (!g) return null;
+
+  const exact = goals.find(x => x.replace(/\s+/g, '') === g);
+  if (exact) return exact;
+  const contains = goals.find(x => {
+    const t = x.replace(/\s+/g, '');
+    return t.includes(g) || g.includes(t);
+  });
+  if (contains) return contains;
+  // "고려대학교" ↔ "고려대 등 상위권 대학" 처럼 학교명 앞부분만 겹치는 경우
+  const head = g.slice(0, 3);
+  return goals.find(x => x.replace(/\s+/g, '').includes(head)) ?? null;
+}
+
+/** 학생의 목표·학년에 해당하는 학습 내용과, 이어지는 단계들 */
+export function resolveRoadmap(
+  goal: string | null | undefined,
+  grade: string | null | undefined,
+  rows: RoadmapRow[]
+) {
+  const matchedGoal = matchRoadmapGoal(goal, rows);
+  if (!matchedGoal) return null;
+  const mine = rows.filter(r => r.goal === matchedGoal).sort((a, b) => a.sortOrder - b.sortOrder);
+  if (mine.length === 0) return null;
+  const stage = roadmapStageForGrade(grade);
+  const currentIdx = stage ? mine.findIndex(r => r.stage === stage) : -1;
+  return {
+    goal: matchedGoal,
+    stage,
+    current: currentIdx >= 0 ? mine[currentIdx] : null,
+    steps: mine,
+    currentIdx,
+  };
+}
