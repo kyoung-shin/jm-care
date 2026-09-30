@@ -6,9 +6,10 @@ import { parseCsv, findHeaderRow, toRecords, cell, num, int } from '@/lib/csv';
 export const runtime = 'nodejs';
 
 /**
- * 입시 전형 CSV 일괄 등록.
- * 한 행이 "학교 + 전형 하나"라서, 같은 학교는 묶어 한 번만 만들고 전형을 붙인다.
- * 같은 학교·연도·전형명은 덮어쓴다(재업로드해도 중복이 쌓이지 않게).
+ * 입시 전형 CSV 일괄 등록 — 기존 내용에 "추가"한다.
+ * 이미 등록된 학교·전형은 지우지 않으며, 파일에 있는 항목만 더하거나 갱신한다.
+ * 한 행이 "학교 + 전형 하나"라서 같은 학교는 묶어 한 번만 만들고 전형을 붙인다.
+ * 같은 학교·연도·전형명·모집방법·계열은 덮어쓴다(같은 파일을 다시 올려도 중복이 쌓이지 않게).
  */
 export async function POST(req: Request) {
   const caller = await getCurrentAppUser();
@@ -38,8 +39,9 @@ export async function POST(req: Request) {
     }
 
     const errors: string[] = [];
-    let schoolCount = 0;
-    let trackCount = 0;
+    let newSchools = 0;
+    let newTracks = 0;
+    let updatedTracks = 0;
     const seenSchools = new Map<string, string>();
 
     for (const [i, r] of records.entries()) {
@@ -54,6 +56,10 @@ export async function POST(req: Request) {
 
       let schoolId = seenSchools.get(schoolName);
       if (!schoolId) {
+        const before = await prisma.admissionSchool.findUnique({
+          where: { name_year: { name: schoolName, year } },
+          select: { id: true },
+        });
         const school = await prisma.admissionSchool.upsert({
           where: { name_year: { name: schoolName, year } },
           update: {
@@ -76,7 +82,7 @@ export async function POST(req: Request) {
         });
         schoolId = school.id;
         seenSchools.set(schoolName, schoolId);
-        schoolCount++;
+        if (!before) newSchools++;
       }
 
       const data = {
@@ -111,9 +117,8 @@ export async function POST(req: Request) {
         where: { schoolId, name: trackName, period: data.period, dept: data.dept },
         select: { id: true },
       });
-      if (existing) await prisma.admissionTrack.update({ where: { id: existing.id }, data });
-      else await prisma.admissionTrack.create({ data });
-      trackCount++;
+      if (existing) { await prisma.admissionTrack.update({ where: { id: existing.id }, data }); updatedTracks++; }
+      else { await prisma.admissionTrack.create({ data }); newTracks++; }
     }
 
     // 학교별 전형 수와 상태를 다시 계산한다
@@ -128,7 +133,19 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({ schoolCount, trackCount, rowCount: records.length, errors });
+    const totalSchools = await prisma.admissionSchool.count({ where: { year } });
+    const totalTracks = await prisma.admissionTrack.count({ where: { school: { year } } });
+
+    return NextResponse.json({
+      mode: 'append',
+      newSchools,
+      newTracks,
+      updatedTracks,
+      totalSchools,
+      totalTracks,
+      rowCount: records.length,
+      errors,
+    });
   } catch (e) {
     console.error('[admission import]', e);
     return NextResponse.json({ error: 'CSV 처리 중 오류가 발생했습니다' }, { status: 500 });

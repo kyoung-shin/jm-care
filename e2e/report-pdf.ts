@@ -724,11 +724,11 @@ async function runAdminCsv(browser: Browser) {
     await page.waitForTimeout(600);
     await shot(page, 'admin-upload-buttons');
 
-    for (const label of ['학년별 공부내용', '학교별 기준', '파일업로드']) {
+    for (const label of ['학년별 공부내용', '학교별 기준', '전형파일업로드']) {
       ok(`"${label}" 버튼 노출`, await page.getByRole('button', { name: new RegExp(label) }).count() > 0);
     }
     // 버튼 순서: 학년별 공부내용 → 학교별 기준 → 파일업로드 → 초안 저장
-    const labels = await page.locator('button').filter({ hasText: /학년별 공부내용|학교별 기준|파일업로드|초안 저장/ }).allInnerTexts();
+    const labels = await page.locator('button').filter({ hasText: /학년별 공부내용|학교별 기준|전형파일업로드|초안 저장/ }).allInnerTexts();
     const order = labels.map(t => t.trim()).filter(Boolean);
     ok('버튼이 초안 저장 왼쪽에 순서대로 배치',
       order.join('>').includes('학년별 공부내용') && order.indexOf('초안 저장') === order.length - 1,
@@ -740,10 +740,18 @@ async function runAdminCsv(browser: Browser) {
     const admissionCsv = '입시 DB,,\n,,\n학교,학교급,지역,계열/전공,모집방법,전형명,전형유형,전형방법(요약),"기준\n(수능최저)","기준\n(한국사)",추가 반영,"반영비율\n(학생부)","반영여부\n(국어)","반영여부\n(수학)","반영여부\n(영어)","반영여부\n(사회)","반영여부\n(과학)","반영여부\n(한국사)","반영여부\n(내신)","에상입결\n(내신등급)","에상입결\n(표준점수)","에상입결\n(백분위)",출처,검증일,확인\nE2E대학교,대학,서울,인문,수시,E2E전형,학생부종합,서류100%,4개중3개합7,4등급이내,-,100%,O,O,O,-,O,O,O,1.5,-,95,E2E출처,2026-06-10,검증완료\n';
 
     const upload = async (label: string, name: string, content: string) => {
-      const input = page.locator('input[type="file"]').nth(['학년별 공부내용', '학교별 기준', '파일업로드'].indexOf(label));
+      const input = page.locator('input[type="file"]').nth(['학년별 공부내용', '학교별 기준', '전형파일업로드'].indexOf(label));
       await input.setInputFiles({ name, mimeType: 'text/csv', buffer: Buffer.from(content, 'utf8') });
       await page.waitForTimeout(4000);
     };
+
+    // 전체 교체 버튼은 한 번 더 확인을 요구한다
+    const roadmapBtn = page.getByRole('button', { name: /학년별 공부내용/ });
+    await roadmapBtn.click();
+    await page.waitForTimeout(500);
+    ok('전체 교체 버튼은 재확인을 요구', await page.getByRole('button', { name: /전체 교체 — 한 번 더 누르세요/ }).count() > 0);
+    await page.getByRole('button', { name: /전체 교체 — 한 번 더 누르세요/ }).click();
+    await page.waitForTimeout(500);
 
     await upload('학년별 공부내용', 'roadmap.csv', roadmapCsv);
     const rm = await (await page.request.get(`${BASE}/api/admin/goal-roadmaps`)).json();
@@ -763,8 +771,39 @@ async function runAdminCsv(browser: Browser) {
     ok('전형 수 반영', mine?.typesCount === 1, `typesCount=${mine?.typesCount}`);
     ok('검증완료 상태 반영', mine?.status === 'VERIFIED', `status=${mine?.status}`);
 
+    // 전형 파일은 "추가" — 다른 학교를 담은 두 번째 파일을 올려도 앞의 것이 남아야 한다
+    const secondCsv = admissionCsv
+      .replace('E2E대학교', 'E2E두번째대학')
+      .replace('E2E전형', 'E2E두번째전형');
+    await upload('전형파일업로드', 'admission2.csv', secondCsv);
+    await page.waitForTimeout(2000);
+    const after = await (await page.request.get(`${BASE}/api/admin/admission-schools`)).json();
+    const names = after.map((x: { name: string }) => x.name);
+    ok('전형 파일은 추가 방식 — 먼저 올린 학교가 남아 있음', names.includes('E2E대학교') && names.includes('E2E두번째대학'),
+      names.filter((n: string) => n.startsWith('E2E')).join(','));
+
+    // 같은 파일을 다시 올려도 중복이 쌓이지 않는다
+    const beforeCount = after.find((x: { name: string }) => x.name === 'E2E대학교')?.typesCount;
+    await upload('전형파일업로드', 'admission.csv', admissionCsv);
+    await page.waitForTimeout(2000);
+    const again = await (await page.request.get(`${BASE}/api/admin/admission-schools`)).json();
+    const sameSchool = again.find((x: { name: string }) => x.name === 'E2E대학교');
+    ok('같은 파일 재업로드 시 중복 없이 갱신', sameSchool?.typesCount === beforeCount, `${beforeCount} → ${sameSchool?.typesCount}`);
+
+    // 기준표는 전체 교체 — 두 번째 파일이 앞의 내용을 지운다
+    const criteria2 = criteriaCsv.replace('E2E판정,88,E2E라인', 'E2E판정2,70,E2E라인2').replace('E2E낮음,60,E2E하위라인,,\n', '');
+    const criteriaBtn = page.getByRole('button', { name: /학교별 기준/ });
+    await criteriaBtn.click();
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: /전체 교체 — 한 번 더 누르세요/ }).click();
+    await page.waitForTimeout(400);
+    await upload('학교별 기준', 'criteria2.csv', criteria2);
+    const cr2 = await (await page.request.get(`${BASE}/api/admin/admission-criteria`)).json();
+    ok('기준표는 전체 교체 — 이전 구간이 사라짐', cr2.length === 1 && cr2[0].percentile === 70,
+      JSON.stringify(cr2.map((x: { percentile: number }) => x.percentile)));
+
     // 잘못된 CSV 는 거부
-    const badInput = page.locator('input[type="file"]').nth(1);
+    const badInput = page.locator('input[type="file"]').nth(0);
     await badInput.setInputFiles({ name: 'bad.csv', mimeType: 'text/csv', buffer: Buffer.from('아무말,두번째\n1,2\n', 'utf8') });
     await page.waitForTimeout(2500);
     ok('헤더 없는 CSV → 오류 안내', await page.locator('text=헤더를 찾지 못했습니다').count() > 0);

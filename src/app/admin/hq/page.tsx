@@ -351,20 +351,23 @@ function TrackInputForm({ schools }: { schools: AdmissionSchoolRow[] }) {
           <CsvUploadButton
             label="학년별 공부내용"
             endpoint="/api/admin/goal-roadmaps"
+            mode="replace"
             hint="목표(대학/고교) × 학년 교차표 — 예: roadmap.csv"
             summarize={d => `로드맵 ${d.count}칸 등록 · 목표 ${(d.goals as string[] | undefined)?.length ?? 0}종`}
           />
           <CsvUploadButton
             label="학교별 기준"
             endpoint="/api/admin/admission-criteria"
+            mode="replace"
             hint="판정 기준표 (백분위 → 전국 라인) — 예: criteria.csv"
             summarize={d => `기준 ${d.count}구간 등록${(d.skipped as string[] | undefined)?.length ? ` · ${(d.skipped as string[]).length}행 건너뜀` : ''}`}
           />
           <CsvUploadButton
-            label="파일업로드"
+            label="전형파일업로드"
             endpoint="/api/admin/admission-schools/import"
+            mode="append"
             hint="입시 전형 표 — 예: admission_process.csv"
-            summarize={d => `학교 ${d.schoolCount} · 전형 ${d.trackCount}건 등록`}
+            summarize={d => `전형 ${d.newTracks}건 추가${Number(d.updatedTracks) ? ` · ${d.updatedTracks}건 갱신` : ''}${Number(d.newSchools) ? ` · 학교 ${d.newSchools}개 신규` : ''} → 누적 ${d.totalSchools}개교 ${d.totalTracks}건`}
             onDone={() => window.location.reload()}
           />
           <button

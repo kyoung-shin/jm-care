@@ -8,6 +8,11 @@ interface Props {
   endpoint: string;
   /** 어떤 표를 올리는지 안내 (버튼 툴팁) */
   hint: string;
+  /**
+   * append  — 기존 내용에 더한다 (같은 항목은 갱신)
+   * replace — 기존 내용을 모두 지우고 올린 파일로 바꾼다
+   */
+  mode: 'append' | 'replace';
   /** 업로드 결과를 한 줄 문구로 */
   summarize: (data: Record<string, unknown>) => string;
   onDone?: () => void;
@@ -18,10 +23,22 @@ interface Props {
  * 엑셀에서 내보낸 표를 그대로 올리므로 파싱·검증은 서버가 맡고,
  * 여기서는 결과 요약과 오류만 보여 준다.
  */
-export default function CsvUploadButton({ label, endpoint, hint, summarize, onDone }: Props) {
+export default function CsvUploadButton({ label, endpoint, hint, mode, summarize, onDone }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string; detail?: string[] } | null>(null);
+  // 전체 교체는 되돌릴 수 없어 한 번 더 확인받는다
+  const [confirming, setConfirming] = useState(false);
+
+  const modeNote = mode === 'replace'
+    ? '기존 내용을 모두 교체합니다'
+    : '기존 내용에 추가됩니다 (같은 항목은 갱신)';
+
+  const openPicker = () => {
+    if (mode === 'replace' && !confirming) { setConfirming(true); return; }
+    setConfirming(false);
+    inputRef.current?.click();
+  };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -57,13 +74,25 @@ export default function CsvUploadButton({ label, endpoint, hint, summarize, onDo
     <div className="relative">
       <input ref={inputRef} type="file" accept=".csv,text/csv" onChange={handleFile} className="hidden" />
       <button
-        onClick={() => inputRef.current?.click()}
+        onClick={openPicker}
         disabled={busy}
-        title={hint}
-        className="px-3 py-1.5 text-xs border border-stone-300 rounded-lg hover:bg-stone-50 disabled:opacity-50 flex items-center gap-1"
+        title={`${hint} · ${modeNote}`}
+        className={`px-3 py-1.5 text-xs border rounded-lg disabled:opacity-50 flex items-center gap-1 ${
+          confirming
+            ? 'border-amber-400 bg-amber-50 text-amber-800 font-semibold'
+            : 'border-stone-300 hover:bg-stone-50'
+        }`}
       >
-        <Upload size={12} /> {busy ? '업로드 중...' : label}
+        <Upload size={12} /> {busy ? '업로드 중...' : confirming ? '전체 교체 — 한 번 더 누르세요' : label}
       </button>
+      {confirming && (
+        <button
+          onClick={() => setConfirming(false)}
+          className="absolute -bottom-5 right-0 text-[10px] text-slate-500 hover:text-slate-800"
+        >
+          취소
+        </button>
+      )}
       {result && (
         <div
           className={`absolute bottom-full right-0 mb-2 w-72 rounded-lg border px-3 py-2.5 text-[11px] leading-relaxed shadow-lg z-10 ${
@@ -74,6 +103,7 @@ export default function CsvUploadButton({ label, endpoint, hint, summarize, onDo
             {result.ok ? <Check size={12} className="mt-0.5 shrink-0" /> : <AlertCircle size={12} className="mt-0.5 shrink-0" />}
             <div className="flex-1">
               <div className="font-semibold">{result.text}</div>
+              <div className="text-[10px] opacity-70 mt-0.5">{modeNote}</div>
               {result.detail && (
                 <ul className="mt-1 space-y-0.5 text-[10px] opacity-80">
                   {result.detail.map((d, i) => <li key={i}>· {d}</li>)}

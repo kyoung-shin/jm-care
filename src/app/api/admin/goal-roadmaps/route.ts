@@ -70,7 +70,7 @@ export async function POST(req: Request) {
     ]);
 
     const goals = [...new Set(entries.map(e => e.goal))];
-    return NextResponse.json({ count: entries.length, goals, stages: stages.filter(Boolean) });
+    return NextResponse.json({ mode: 'replace', count: entries.length, goals, stages: stages.filter(Boolean) });
   } catch (e) {
     console.error('[roadmap import]', e);
     return NextResponse.json({ error: 'CSV 처리 중 오류가 발생했습니다' }, { status: 500 });

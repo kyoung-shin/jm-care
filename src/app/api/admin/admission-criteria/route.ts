@@ -73,6 +73,7 @@ export async function POST(req: Request) {
     ]);
 
     return NextResponse.json({
+      mode: 'replace',
       count: finalRows.length,
       rowCount: records.length,
       skipped,
