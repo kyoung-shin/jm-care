@@ -152,15 +152,35 @@ export function roadmapStageForGrade(grade?: string | null): string | null {
   return null; // 고등학생은 표에 구간이 없다
 }
 
+// 로드맵 표의 목표는 "대학 이름"이 아니라 "목표 유형"이다(상위권 대학 / 의약계열 / 과기원 …).
+// 학생 목표 문구가 표의 목표명과 글자로 겹치지 않아도 유형으로 맞출 수 있게 키워드를 둔다.
+// 앞쪽 규칙이 우선이다 — 의예과 지망은 학교와 무관하게 의약계열 로드맵을 따른다.
+const GOAL_CATEGORY_RULES: Array<{ table: RegExp; student: RegExp }> = [
+  { table: /의약/, student: /의예|의대|의학|한의|치의|치대|약학|약대|수의|간호|의약|한의에/ },
+  { table: /과기원|KAIST/i, student: /KAIST|카이스트|과기원|과학기술원|GIST|DGIST|UNIST|POSTECH|포항공/i },
+  { table: /과학고|영재/, student: /과학고|영재/ },
+  { table: /외고|국제고/, student: /외고|외국어고|국제고/ },
+  { table: /상위권\s*대학/, student: /서울대|연세대|고려대|서강대|성균관대|한양대|중앙대|경희대|한국외대|외국어대|서울시립대|이화여대|건국대|동국대|홍익대/ },
+  { table: /일반고/, student: /일반고/ },
+];
+
 /**
  * 목표 문구로 로드맵 행을 고른다.
  * 표의 목표명("고려대 등 상위권 대학")과 학생 목표("고려대학교")가 정확히 같지 않으므로
- * 서로를 포함하는지, 안 되면 앞 두 글자가 겹치는지로 맞춘다.
+ * 서로를 포함하는지, 앞 세 글자가 겹치는지 보고, 그래도 안 되면 목표 유형 키워드로 맞춘다.
+ * detail 은 학과·계열 문구(예: "한의예과")로, 유형 판단에만 쓴다.
  */
-export function matchRoadmapGoal(goal: string | null | undefined, rows: RoadmapRow[]): string | null {
+export function matchRoadmapGoal(goal: string | null | undefined, rows: RoadmapRow[], detail?: string | null): string | null {
   const goals = [...new Set(rows.map(r => r.goal))];
   if (goals.length === 0) return null;
   const g = (goal ?? '').replace(/\s+/g, '');
+  const text = `${g} ${(detail ?? '').replace(/\s+/g, '')}`;
+  // 의약계열처럼 학과로 정해지는 유형은 학교명 일치보다 앞선다
+  const medical = GOAL_CATEGORY_RULES[0];
+  if (medical.student.test(text)) {
+    const hit = goals.find(x => medical.table.test(x));
+    if (hit) return hit;
+  }
   if (!g) return null;
 
   const exact = goals.find(x => x.replace(/\s+/g, '') === g);
@@ -172,16 +192,25 @@ export function matchRoadmapGoal(goal: string | null | undefined, rows: RoadmapR
   if (contains) return contains;
   // "고려대학교" ↔ "고려대 등 상위권 대학" 처럼 학교명 앞부분만 겹치는 경우
   const head = g.slice(0, 3);
-  return goals.find(x => x.replace(/\s+/g, '').includes(head)) ?? null;
+  const byHead = goals.find(x => x.replace(/\s+/g, '').includes(head));
+  if (byHead) return byHead;
+  // "서울대학교" 처럼 표에 이름이 없는 학교는 목표 유형으로 맞춘다
+  for (const rule of GOAL_CATEGORY_RULES) {
+    if (!rule.student.test(text)) continue;
+    const hit = goals.find(x => rule.table.test(x));
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /** 학생의 목표·학년에 해당하는 학습 내용과, 이어지는 단계들 */
 export function resolveRoadmap(
   goal: string | null | undefined,
   grade: string | null | undefined,
-  rows: RoadmapRow[]
+  rows: RoadmapRow[],
+  detail?: string | null
 ) {
-  const matchedGoal = matchRoadmapGoal(goal, rows);
+  const matchedGoal = matchRoadmapGoal(goal, rows, detail);
   if (!matchedGoal) return null;
   const mine = rows.filter(r => r.goal === matchedGoal).sort((a, b) => a.sortOrder - b.sortOrder);
   if (mine.length === 0) return null;
@@ -193,5 +222,49 @@ export function resolveRoadmap(
     current: currentIdx >= 0 ? mine[currentIdx] : null,
     steps: mine,
     currentIdx,
+  };
+}
+
+/** 학생 현황 입력의 "장기 로드맵" 한 단계 */
+export interface StudentRoadmapEntry { stage: string; label?: string; desc?: string; status?: string }
+
+export interface ReportRoadmap {
+  goal: string;
+  /** 'student' = 담임이 학생별로 입력한 로드맵, 'template' = 본사 목표별 표 */
+  source: 'student' | 'template';
+  steps: Array<{ stage: string; content: string }>;
+  currentIdx: number;
+}
+
+/**
+ * 리포트에 실을 학년별 로드맵.
+ * 담임이 학생 현황 입력에서 적은 로드맵이 있으면 그것을 쓰고,
+ * 없을 때만 본사가 올린 목표별 표(roadmap.csv)로 채운다.
+ */
+export function resolveReportRoadmap(
+  student: { roadmap?: unknown; finalGoalSchool?: string | null; finalGoalDetail?: string | null; grade?: string | null },
+  rows: RoadmapRow[]
+): ReportRoadmap | null {
+  const own = (Array.isArray(student.roadmap) ? student.roadmap as StudentRoadmapEntry[] : [])
+    .filter(r => r && typeof r.stage === 'string' && ((r.label ?? '').trim() || (r.desc ?? '').trim()));
+  if (own.length > 0) {
+    return {
+      goal: student.finalGoalSchool?.trim() || '담임 설정 로드맵',
+      source: 'student',
+      steps: own.map(r => {
+        const label = (r.label ?? '').trim();
+        const desc = (r.desc ?? '').trim();
+        return { stage: r.stage, content: label && desc ? `${label} — ${desc}` : label || desc };
+      }),
+      currentIdx: own.findIndex(r => r.status === 'current'),
+    };
+  }
+  const plan = resolveRoadmap(student.finalGoalSchool, student.grade, rows, student.finalGoalDetail);
+  if (!plan || plan.steps.length === 0) return null;
+  return {
+    goal: plan.goal,
+    source: 'template',
+    steps: plan.steps.map(x => ({ stage: x.stage, content: x.content })),
+    currentIdx: plan.currentIdx,
   };
 }

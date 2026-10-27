@@ -53,6 +53,12 @@ export default function TopBar() {
               >
                 학생 등록
               </Link>
+              <Link
+                href="/admissions"
+                className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${pathname.startsWith('/admissions') ? 'bg-slate-700 text-white' : 'bg-slate-800 text-slate-300 hover:text-white'}`}
+              >
+                입시 전형
+              </Link>
             </div>
           )}
           {role === 'DIRECTOR' && (

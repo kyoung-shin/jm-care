@@ -13,7 +13,8 @@
     "db:seed": "npx tsx prisma/seed.ts",
     "db:seed-admin": "npx tsx prisma/seed-admin.ts",
     "db:studio": "prisma studio",
-    "e2e:pdf": "dotenv -e .env.local -- npx tsx e2e/report-pdf.ts"
+    "e2e:pdf": "dotenv -e .env.local -- npx tsx e2e/report-pdf.ts",
+    "e2e:v3": "dotenv -e .env.local -- npx tsx e2e/req-v3.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

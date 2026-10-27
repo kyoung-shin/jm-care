@@ -55,7 +55,10 @@ export async function POST(req: Request) {
     const payload = await req.json();
     // id는 서버가 생성한다. 지점은 아래에서 호출자 기준으로 다시 정한다.
     delete payload.id;
-    const { branchId: requestedBranchId, ...data } = payload;
+    const { branchId: requestedBranchId, parentIds: rawParentIds, ...data } = payload;
+    const parentIds: string[] = Array.isArray(rawParentIds)
+      ? [...new Set(rawParentIds.filter((v: unknown): v is string => typeof v === 'string' && !!v))]
+      : [];
 
     // 소속 지점은 서버가 결정한다. 원장·강사는 본인 지점으로 고정하고 요청값은
     // 무시한다(구 버전 번들이 캐시된 클라이언트가 엉뚱한 지점을 보내도 안전하게).
@@ -79,8 +82,32 @@ export async function POST(req: Request) {
       );
     }
 
+    // 등록과 동시에 학부모를 연결한다. 승인된 같은 지점 학부모만 허용한다.
+    if (parentIds.length > 0) {
+      const parents = await prisma.user.findMany({
+        where: { id: { in: parentIds } },
+        select: { id: true, name: true, role: true, branchId: true },
+      });
+      const bad = parentIds.find(pid => {
+        const p = parents.find(x => x.id === pid);
+        return !p || p.role !== 'PARENT' || p.branchId !== branchId;
+      });
+      if (bad) {
+        return NextResponse.json(
+          { error: '연결할 학부모를 찾을 수 없거나 같은 지점의 승인된 학부모가 아닙니다' },
+          { status: 400 }
+        );
+      }
+    }
+
     const student = await prisma.student.create({
-      data: { ...data, initial: data.initial || String(data.name).charAt(0), branchId },
+      data: {
+        ...data,
+        initial: data.initial || String(data.name).charAt(0),
+        branchId,
+        ...(parentIds.length > 0 ? { parents: { connect: parentIds.map(id => ({ id })) } } : {}),
+      },
+      include: { parents: { select: { id: true, name: true } } },
     });
     return NextResponse.json(student, { status: 201 });
   } catch (e) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Target, Activity, TrendingUp, Map, Save } from 'lucide-react';
+import { X, Target, Activity, TrendingUp, Map, Save, NotebookPen } from 'lucide-react';
 import { subjectsForGrade, averageOfSubjects, type SubjectField } from '@/lib/subjects';
 
 interface Props {
@@ -62,6 +62,21 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
     });
   };
 
+  // 학생부 기록란 — 불러온 값과 달라졌을 때만 저장한다
+  const [recordSpecialNotes, setRecordSpecialNotes] = useState('');
+  const [recordRemarks, setRecordRemarks] = useState('');
+  const [loadedRecord, setLoadedRecord] = useState({ special: '', remarks: '' });
+
+  // 과목별 목표점수의 종합(평균). 입력된 과목만으로 계산한다.
+  const targetAverage = averageOfSubjects(
+    Object.fromEntries(subjects.map(sd => [sd.field, targets[sd.label]?.trim() ? Number(targets[sd.label]) : null])),
+    grade
+  );
+  const examAverage = averageOfSubjects(
+    Object.fromEntries(subjects.map(sd => [sd.field, examScores[sd.label]?.trim() ? Number(examScores[sd.label]) : null])),
+    grade
+  );
+
   // 위험 신호
   const [risk, setRisk] = useState<Record<string, { value: string; detail: string; tone: 'good' | 'risk' }>>({});
 
@@ -107,6 +122,10 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
           const cur = roadmap.find(r => r.status === 'current');
           if (cur) setCurrentStage(cur.stage);
         }
+
+        setRecordSpecialNotes(d.recordSpecialNotes ?? '');
+        setRecordRemarks(d.recordRemarks ?? '');
+        setLoadedRecord({ special: d.recordSpecialNotes ?? '', remarks: d.recordRemarks ?? '' });
 
         const signals = Array.isArray(d.riskSignals) ? d.riskSignals as RiskEntry[] : [];
         if (signals.length > 0) {
@@ -160,15 +179,18 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
 
       const currentIdx = ROADMAP_STAGES.indexOf(currentStage);
       const lastIdx = ROADMAP_STAGES.length - 1;
-      const roadmap = currentStage
+      // 단계 내용만 적고 '현재'를 고르지 않아도 저장한다.
+      // (예전에는 현재 단계를 고르지 않으면 입력한 로드맵이 통째로 버려졌다)
+      const hasRoadmapText = ROADMAP_STAGES.some(st => roadmapStages[st]?.label?.trim() || roadmapStages[st]?.desc?.trim());
+      const roadmap = currentStage || hasRoadmapText
         ? ROADMAP_STAGES.map((stage, i) => ({
             stage,
             period: i === currentIdx ? '현재' : '',
             label: roadmapStages[stage]?.label?.trim() ?? '',
             desc: roadmapStages[stage]?.desc?.trim() ?? '',
             status: i === lastIdx ? 'goal' as const
-              : i === currentIdx ? 'current' as const
-              : i < currentIdx ? 'done' as const
+              : currentIdx >= 0 && i === currentIdx ? 'current' as const
+              : currentIdx >= 0 && i < currentIdx ? 'done' as const
               : 'upcoming' as const,
           }))
         : undefined;
@@ -184,6 +206,8 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
       if (Object.keys(subjectTargets).length > 0) statusPayload.subjectTargets = subjectTargets;
       if (roadmap) statusPayload.roadmap = roadmap;
       if (riskSignals.length > 0) statusPayload.riskSignals = riskSignals;
+      if (recordSpecialNotes.trim() !== loadedRecord.special.trim()) statusPayload.recordSpecialNotes = recordSpecialNotes;
+      if (recordRemarks.trim() !== loadedRecord.remarks.trim()) statusPayload.recordRemarks = recordRemarks;
 
       if (Object.keys(statusPayload).length > 0) {
         const res = await fetch(`/api/students/${studentId}/status-updates`, {
@@ -250,13 +274,19 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
             {/* 과목별 목표점수 + 최근점수 */}
             <section>
               <div className="flex items-center gap-2 mb-3"><TrendingUp size={14} className="text-slate-700" /><div className="text-sm font-bold text-slate-900">과목별 목표점수</div></div>
-              <div className={`grid gap-3 mb-4 ${subjects.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+              <div className={`grid gap-3 mb-4 ${subjects.length === 5 ? 'grid-cols-6' : 'grid-cols-5'}`}>
                 {subjects.map(sd => (
                   <div key={sd.field}>
                     <label className="text-[11px] text-slate-500 mb-1 block">{sd.label} 목표</label>
                     <input className={inputCls} type="number" value={targets[sd.label] ?? ''} onChange={e => setTargets(t => ({ ...t, [sd.label]: e.target.value }))} />
                   </div>
                 ))}
+                <div>
+                  <label className="text-[11px] text-slate-500 mb-1 block">종합점수 (평균)</label>
+                  <div data-testid="target-average" className="w-full text-sm border border-stone-200 bg-stone-50 rounded-lg px-3 py-2 num font-bold text-slate-900">
+                    {targetAverage ?? '—'}
+                  </div>
+                </div>
               </div>
 
               <label className="flex items-center gap-2 text-xs text-slate-600 mb-3">
@@ -270,13 +300,17 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
                     <input className={inputCls} placeholder="날짜 (예: 2026.05.16)" value={exam.date} onChange={e => setExam(x => ({ ...x, date: e.target.value }))} />
                     <input className={inputCls} placeholder="시험명" value={exam.fullName} onChange={e => setExam(x => ({ ...x, fullName: e.target.value }))} />
                   </div>
-                  <div className={`grid gap-3 ${subjects.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                  <div className={`grid gap-3 ${subjects.length === 5 ? 'grid-cols-6' : 'grid-cols-5'}`}>
                     {subjects.map(sd => (
                       <div key={sd.field}>
                         <label className="text-[11px] text-slate-500 mb-1 block">{sd.label} 점수</label>
                         <input className={inputCls} type="number" value={examScores[sd.label] ?? ''} onChange={e => setExamScores(x => ({ ...x, [sd.label]: e.target.value }))} />
                       </div>
                     ))}
+                    <div>
+                      <label className="text-[11px] text-slate-500 mb-1 block">종합 (평균)</label>
+                      <div className="w-full text-sm border border-stone-200 bg-white rounded-lg px-3 py-2 num font-bold text-slate-900">{examAverage ?? '—'}</div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -307,6 +341,33 @@ export default function StudentInputModal({ studentId, studentName, grade, onClo
                     </label>
                   </div>
                 ))}
+              </div>
+            </section>
+
+            {/* 학생부 기록란 */}
+            <section>
+              <div className="flex items-center gap-2 mb-3"><NotebookPen size={14} className="text-slate-700" /><div className="text-sm font-bold text-slate-900">학생부 기록</div></div>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[11px] text-slate-500 mb-1 block">세특사항 (세부능력 및 특기사항)</label>
+                  <textarea
+                    aria-label="세특사항"
+                    className={`${inputCls} min-h-[72px] resize-y leading-relaxed`}
+                    placeholder="예: 수학 — 함수의 극한 탐구 보고서 작성, 발표에서 논리 전개가 돋보임"
+                    value={recordSpecialNotes}
+                    onChange={e => setRecordSpecialNotes(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 mb-1 block">학생부 특이사항</label>
+                  <textarea
+                    aria-label="학생부 특이사항"
+                    className={`${inputCls} min-h-[72px] resize-y leading-relaxed`}
+                    placeholder="예: 2학년 1학기 학급 부회장, 교내 수학경시 장려상"
+                    value={recordRemarks}
+                    onChange={e => setRecordRemarks(e.target.value)}
+                  />
+                </div>
               </div>
             </section>
 

@@ -85,6 +85,8 @@ function DirectorPage() {
   const [branchId, setBranchId] = useState<string | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
   const [noStudents, setNoStudents] = useState(false);
+  // 리포트 모달에서 대상 학생을 바꿀 때 쓰는 지점 학생 목록
+  const [branchStudents, setBranchStudents] = useState<Array<{ id: string; name: string; grade: string }>>([]);
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [counselingList, setCounselingList] = useState<CounselingRecord[]>([]);
   const [reportOpen, setReportOpen] = useState(false);
@@ -104,6 +106,7 @@ function DirectorPage() {
         setBranchId(me.branchId);
         const students = await fetch(`/api/students?branchId=${me.branchId}`).then(r => r.json());
         if (Array.isArray(students) && students.length > 0) {
+          setBranchStudents(students.map((s: { id: string; name: string; grade: string }) => ({ id: s.id, name: s.name, grade: s.grade })));
           setStudentId(students[0].id);
         } else {
           setNoStudents(true);
@@ -296,7 +299,7 @@ function DirectorPage() {
       </div>
 
       <Roadmap roadmap={student.roadmap} daysUntilCSAT={student.daysUntilCSAT} daysUntilHS={student.daysUntilHS} finalGoalSchool={student.finalGoalSchool} studentGrade={student.grade} />
-      <MockExamChart mockExams={student.mockExams} grade={student.grade} />
+      <MockExamChart mockExams={student.mockExams} grade={student.grade} studentId={student.id} onChanged={reloadStudent} />
 
       {/* 핵심 4과목 */}
       <div className="bg-white border border-stone-200 rounded-xl p-6 mb-4">
@@ -489,6 +492,7 @@ function DirectorPage() {
           mode="director"
           studentId={studentId ?? undefined}
           studentName={student?.name}
+          students={branchStudents}
           onClose={() => setReportOpen(false)}
         />
       )}

@@ -28,7 +28,10 @@ export async function POST(
     if (!access.canWrite) return writeForbidden();
 
     const { id } = await params;
-    const { overallReadiness, peerAverage, subjectTargets, roadmap, riskSignals, enrolledMonths, note } = await req.json();
+    const {
+      overallReadiness, peerAverage, subjectTargets, roadmap, riskSignals, enrolledMonths, note,
+      recordSpecialNotes, recordRemarks,
+    } = await req.json();
 
     const entry: Prisma.StudentStatusUpdateCreateInput = {
       student: { connect: { id } },
@@ -43,6 +46,15 @@ export async function POST(
     if (riskSignals !== undefined) { entry.riskSignals = riskSignals; mirror.riskSignals = riskSignals; }
     if (typeof enrolledMonths === 'number' && Number.isInteger(enrolledMonths)) { mirror.enrolledMonths = enrolledMonths; }
     if (typeof note === 'string') { entry.note = note; }
+    // 학생부 기록란: 빈 문자열은 "지움"으로 본다
+    if (typeof recordSpecialNotes === 'string') {
+      const v = recordSpecialNotes.trim() || null;
+      entry.recordSpecialNotes = v; mirror.recordSpecialNotes = v;
+    }
+    if (typeof recordRemarks === 'string') {
+      const v = recordRemarks.trim() || null;
+      entry.recordRemarks = v; mirror.recordRemarks = v;
+    }
 
     const [update] = await prisma.$transaction([
       prisma.studentStatusUpdate.create({ data: entry }),

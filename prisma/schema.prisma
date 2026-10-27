@@ -170,6 +170,9 @@ model Student {
   roadmap             Json?
   riskSignals         Json?
   subjectTargets      Json?
+  // 학생부 기록 (강사가 현황 입력에서 작성, 최신값을 여기 미러링)
+  recordSpecialNotes  String? // 세특사항 (세부능력 및 특기사항)
+  recordRemarks       String? // 학생부 특이사항
   instructorId        String
   instructor          User                  @relation("InstructorStudents", fields: [instructorId], references: [id])
   branchId            String
@@ -194,6 +197,8 @@ model StudentStatusUpdate {
   subjectTargets   Json?
   roadmap          Json?
   riskSignals      Json?
+  recordSpecialNotes String?
+  recordRemarks    String?
   note             String?
   createdBy        String?
   createdAt        DateTime @default(now())

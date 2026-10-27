@@ -7,6 +7,7 @@ import BranchAccountsModal from '@/components/modals/BranchAccountsModal';
 import AddBranchModal from '@/components/modals/AddBranchModal';
 import DeleteBranchModal from '@/components/modals/DeleteBranchModal';
 import AddSchoolModal from '@/components/modals/AddSchoolModal';
+import EditTrackModal, { type TrackData } from '@/components/modals/EditTrackModal';
 import { registerBeforeLeaveSave } from '@/lib/beforeLeave';
 import CsvUploadButton from '@/components/admin/CsvUploadButton';
 
@@ -115,6 +116,7 @@ interface AdmissionSchoolRow {
   updatedBy: string | null;
   source: string | null;
   updatedAt: string;
+  tracks: TrackData[];
 }
 
 const statusCfg: Record<string, { label: string; cls: string }> = {
@@ -125,15 +127,22 @@ const statusCfg: Record<string, { label: string; cls: string }> = {
 
 const currentAdmissionYear = new Date().getFullYear() + 1;
 
+// 표 한 줄 = 전형 하나. 전형이 아직 없는 학교도 한 줄로 보여 학교 편집에 들어갈 수 있게 한다.
+type AdmissionRow =
+  | { kind: 'track'; school: AdmissionSchoolRow; track: TrackData }
+  | { kind: 'school'; school: AdmissionSchoolRow };
+
 function AdmissionDB() {
   const [schools, setSchools] = useState<AdmissionSchoolRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSchool, setEditingSchool] = useState<AdmissionSchoolRow | null>(null);
+  // 편집을 누르면 학교 모달을 거치지 않고 바로 전형 수정 화면을 연다
+  const [editingTrack, setEditingTrack] = useState<{ school: AdmissionSchoolRow; track: TrackData } | null>(null);
 
   const load = () => {
-    fetch('/api/admin/admission-schools').then(r => r.json()).then(d => {
+    fetch('/api/admission/catalog').then(r => r.json()).then(d => {
       if (Array.isArray(d)) setSchools(d);
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -142,9 +151,19 @@ function AdmissionDB() {
   useEffect(() => { load(); }, []);
 
   const q = query.trim().toLowerCase();
-  const filteredSchools = q
-    ? schools.filter(s => s.name.toLowerCase().includes(q) || (s.dept ?? '').toLowerCase().includes(q))
-    : schools;
+  const rows: AdmissionRow[] = schools.flatMap((s): AdmissionRow[] =>
+    s.tracks.length > 0
+      ? s.tracks.map(t => ({ kind: 'track' as const, school: s, track: t }))
+      : [{ kind: 'school' as const, school: s }]
+  );
+  const filteredRows = q
+    ? rows.filter(r => {
+        const hay = [r.school.name, r.school.dept, r.kind === 'track' ? `${r.track.name} ${r.track.dept ?? ''} ${r.track.period} ${r.track.type ?? ''}` : '']
+          .join(' ').toLowerCase();
+        return hay.includes(q);
+      })
+    : rows;
+  const trackTotal = rows.filter(r => r.kind === 'track').length;
 
   return (
     <div className="space-y-4">
@@ -159,6 +178,14 @@ function AdmissionDB() {
           onCreated={load}
         />
       )}
+      {editingTrack && (
+        <EditTrackModal
+          schoolName={editingTrack.school.name}
+          track={editingTrack.track}
+          onClose={() => setEditingTrack(null)}
+          onSaved={load}
+        />
+      )}
       <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 flex items-start gap-3">
         <Database size={18} className="text-violet-600 mt-0.5 shrink-0" />
         <div className="text-xs text-violet-900 leading-relaxed flex-1">
@@ -171,49 +198,69 @@ function AdmissionDB() {
 
       <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200 bg-stone-50">
-          <div className="text-sm font-bold text-slate-900">{currentAdmissionYear}학년도 입시 기준 마스터</div>
+          <div>
+            <div className="text-sm font-bold text-slate-900">{currentAdmissionYear}학년도 입시 기준 마스터</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">학교 {schools.length}개교 · 전형 {trackTotal}건 · 학교명을 누르면 학교 정보를 수정합니다</div>
+          </div>
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input value={query} onChange={e => setQuery(e.target.value)} className="text-xs border border-stone-300 rounded-lg pl-8 pr-3 py-1.5 w-44" placeholder="학교 검색" />
+              <input value={query} onChange={e => setQuery(e.target.value)} className="text-xs border border-stone-300 rounded-lg pl-8 pr-3 py-1.5 w-52" placeholder="학교 · 계열 · 전형 검색" />
             </div>
           </div>
         </div>
         <table className="w-full text-sm">
           <thead className="bg-stone-50/60 text-[11px] text-slate-500">
             <tr>
-              <th className="px-5 py-2.5 text-left font-semibold">학교 / 모집단위</th>
-              <th className="px-3 py-2.5 text-center font-semibold">학년도</th>
-              <th className="px-3 py-2.5 text-center font-semibold">전형 수</th>
+              <th className="px-5 py-2.5 text-left font-semibold">학교</th>
+              <th className="px-3 py-2.5 text-center font-semibold">모집시기</th>
+              <th className="px-3 py-2.5 text-left font-semibold">계열</th>
+              <th className="px-3 py-2.5 text-left font-semibold">전형명</th>
               <th className="px-3 py-2.5 text-center font-semibold">상태</th>
               <th className="px-3 py-2.5 text-left font-semibold">최종 갱신</th>
-              <th className="px-3 py-2.5"></th>
+              <th className="px-3 py-2.5 text-right font-semibold">수정</th>
             </tr>
           </thead>
           <tbody>
-            {!loading && filteredSchools.length === 0 && (
-              <tr><td colSpan={6} className="px-5 py-6 text-center text-slate-400 text-sm">{q ? '검색 결과가 없습니다' : '등록된 학교가 없습니다'}</td></tr>
+            {!loading && filteredRows.length === 0 && (
+              <tr><td colSpan={7} className="px-5 py-6 text-center text-slate-400 text-sm">{q ? '검색 결과가 없습니다' : '등록된 학교가 없습니다'}</td></tr>
             )}
-            {filteredSchools.map(s => {
-              const sc = statusCfg[s.status];
+            {filteredRows.map(r => {
+              const s = r.school;
+              const status = r.kind === 'track' ? r.track.status : s.status;
+              const sc = statusCfg[status];
+              const updatedAt = r.kind === 'track' ? r.track.updatedAt : s.updatedAt;
+              const updatedBy = r.kind === 'track' ? r.track.updatedBy : s.updatedBy;
               return (
-                <tr key={s.id} className="border-t border-stone-100 hover:bg-stone-50/50">
+                <tr key={r.kind === 'track' ? r.track.id : s.id} data-track-row={r.kind === 'track' ? r.track.id : undefined} className="border-t border-stone-100 hover:bg-stone-50/50">
                   <td className="px-5 py-3">
-                    <div className="font-semibold text-slate-900">{s.name}</div>
-                    <div className="text-[11px] text-slate-500">{s.dept}</div>
+                    <button onClick={() => setEditingSchool(s)} className="font-semibold text-slate-900 hover:underline underline-offset-2 text-left" title="학교 정보 수정">
+                      {s.name}
+                    </button>
+                    <div className="text-[10px] text-slate-400 num">{s.year}학년도</div>
                   </td>
-                  <td className="px-3 py-3 text-center num text-slate-700">{s.year}</td>
-                  <td className="px-3 py-3 text-center num text-slate-700">{s.typesCount}</td>
+                  {r.kind === 'track' ? (
+                    <>
+                      <td className="px-3 py-3 text-center text-slate-700">{r.track.period}</td>
+                      <td className="px-3 py-3 text-slate-700">{r.track.dept ?? s.dept ?? '—'}</td>
+                      <td className="px-3 py-3">
+                        <div className="font-semibold text-slate-900">{r.track.name}</div>
+                        {r.track.type && <div className="text-[10px] text-slate-500">{r.track.type}</div>}
+                      </td>
+                    </>
+                  ) : (
+                    <td colSpan={3} className="px-3 py-3 text-xs text-slate-400">등록된 전형이 없습니다</td>
+                  )}
                   <td className="px-3 py-3 text-center">
                     <span className={`text-[10px] px-2 py-1 rounded-full border font-semibold ${sc.cls}`}>{sc.label}</span>
                   </td>
                   <td className="px-3 py-3">
-                    <div className="text-[11px] text-slate-700 num">{new Date(s.updatedAt).toLocaleDateString('ko-KR')}</div>
-                    <div className="text-[10px] text-slate-400">{s.updatedBy}</div>
+                    <div className="text-[11px] text-slate-700 num">{new Date(updatedAt).toLocaleDateString('ko-KR')}</div>
+                    <div className="text-[10px] text-slate-400">{updatedBy}</div>
                   </td>
                   <td className="px-3 py-3 text-right">
                     <button
-                      onClick={() => setEditingSchool(s)}
+                      onClick={() => (r.kind === 'track' ? setEditingTrack({ school: s, track: r.track }) : setEditingSchool(s))}
                       className="text-xs text-slate-500 hover:text-slate-900 font-semibold flex items-center gap-0.5 ml-auto"
                     >
                       <Edit3 size={12} /> 편집
@@ -226,12 +273,12 @@ function AdmissionDB() {
         </table>
       </div>
 
-      <TrackInputForm schools={schools} />
+      <TrackInputForm schools={schools} onCreated={load} />
     </div>
   );
 }
 
-function TrackInputForm({ schools }: { schools: AdmissionSchoolRow[] }) {
+function TrackInputForm({ schools, onCreated }: { schools: AdmissionSchoolRow[]; onCreated?: () => void }) {
   const [schoolId, setSchoolId] = useState('');
   const [name, setName] = useState('');
   const [period, setPeriod] = useState('수시');
@@ -276,6 +323,7 @@ function TrackInputForm({ schools }: { schools: AdmissionSchoolRow[] }) {
       }
       reset();
       setSaving(false);
+      onCreated?.();
     } catch {
       setError('저장에 실패했습니다');
       setSaving(false);

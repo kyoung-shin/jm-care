@@ -15,18 +15,19 @@ export async function PATCH(
     if (!existing || existing.schoolId !== id) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const {
-      name, period, type, method, csatMinCriteria, koreanHistory,
+      name, period, dept, type, method, csatMinCriteria, koreanHistory,
       targetGrade, targetCsatMinRate, targetRecordCount, status, source,
     } = await req.json();
 
     const data: {
-      name?: string; period?: string; type?: string | null; method?: string | null;
+      name?: string; period?: string; dept?: string | null; type?: string | null; method?: string | null;
       csatMinCriteria?: string | null; koreanHistory?: string | null;
       targetGrade?: number | null; targetCsatMinRate?: number | null; targetRecordCount?: number | null;
       status?: 'VERIFIED' | 'REVIEW' | 'DRAFT'; source?: string | null; updatedBy?: string;
     } = {};
     if (typeof name === 'string' && name.trim()) data.name = name.trim();
     if (typeof period === 'string' && period.trim()) data.period = period.trim();
+    if (typeof dept === 'string' || dept === null) data.dept = dept ? dept.trim() || null : null;
     if (typeof type === 'string' || type === null) data.type = type ? type.trim() || null : null;
     if (typeof method === 'string' || method === null) data.method = method ? method.trim() || null : null;
     if (typeof csatMinCriteria === 'string' || csatMinCriteria === null) data.csatMinCriteria = csatMinCriteria ? csatMinCriteria.trim() || null : null;

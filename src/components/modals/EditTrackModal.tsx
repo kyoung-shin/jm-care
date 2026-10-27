@@ -14,6 +14,8 @@ export interface TrackData {
   schoolId: string;
   name: string;
   period: string;
+  /** 계열/전공 (CSV 업로드 항목) */
+  dept?: string | null;
   type: string | null;
   method: string | null;
   csatMinCriteria: string | null;
@@ -37,6 +39,7 @@ interface Props {
 export default function EditTrackModal({ schoolName, track, onClose, onSaved }: Props) {
   const [name, setName] = useState(track.name);
   const [period, setPeriod] = useState(track.period);
+  const [dept, setDept] = useState(track.dept ?? '');
   const [type, setType] = useState(track.type ?? '');
   const [method, setMethod] = useState(track.method ?? '');
   const [csatMinCriteria, setCsatMinCriteria] = useState(track.csatMinCriteria ?? '');
@@ -58,7 +61,7 @@ export default function EditTrackModal({ schoolName, track, onClose, onSaved }: 
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name, period, type, method, csatMinCriteria, koreanHistory,
+          name, period, dept, type, method, csatMinCriteria, koreanHistory,
           targetGrade, targetCsatMinRate, targetRecordCount, status, source,
         }),
       });
@@ -97,6 +100,10 @@ export default function EditTrackModal({ schoolName, track, onClose, onSaved }: 
                 <select value={period} onChange={e => setPeriod(e.target.value)} className={`${inputCls} bg-white`}>
                   <option>수시</option><option>정시</option><option>고입</option>
                 </select>
+              </div>
+              <div className="col-span-2">
+                <label className="text-[11px] font-semibold text-slate-600 mb-1.5 block">계열 / 학과</label>
+                <input value={dept} onChange={e => setDept(e.target.value)} placeholder="예: 공학계열" className={inputCls} />
               </div>
               <div>
                 <label className="text-[11px] font-semibold text-slate-600 mb-1.5 block">전형 유형</label>

@@ -253,6 +253,8 @@ async function shot(page: Page, name: string) {
 
 async function signIn(ctx: BrowserContext, username: string): Promise<Page> {
   const page = await ctx.newPage();
+  // 실패 시 마지막 화면을 남길 수 있게 바로 기억해 둔다
+  lastPage = page;
   await page.goto(`${BASE}/sign-in`, { waitUntil: 'networkidle' });
   await page.locator('input').first().fill(username);
   await page.locator('input[type="password"]').first().fill(PW);
@@ -335,7 +337,8 @@ async function run(fx: Fixture, browser: Browser) {
   void gradedByDirector;
 
   // 회차를 1차로 바꾸면 다른 기간의 PDF 가 나와야 한다
-  const picker = dp.locator('select').first();
+  // 헤더에 학생 선택도 생겼으므로 회차 선택을 이름으로 지목한다
+  const picker = dp.getByLabel('리포트 기준 회차');
   if (await picker.count() > 0) {
     await picker.selectOption({ index: 0 });
     await dp.waitForTimeout(1200);
@@ -617,13 +620,13 @@ async function runInstructor(fx: Fixture, browser: Browser) {
     ok('예약으로 생긴 일정은 달력에서 삭제 불가 → 400', del.status() === 400, `status=${del.status()}`);
   }
 
-  // 거절로 되돌리면 일정에서도 내려간다
+  // 확정 건을 "예약 취소"하면 일정에서도 내려간다
   await ip.getByRole('button', { name: /일시 변경/ }).first().click();
   await ip.waitForTimeout(800);
-  await ip.getByRole('button', { name: /거절로 변경/ }).first().click();
+  await ip.getByRole('button', { name: /예약 취소/ }).first().click();
   await ip.waitForTimeout(3500);
   const sched3 = await (await ip.request.get(`${BASE}/api/instructors/${fx.instructorId}/summary`)).json();
-  ok('거절로 되돌리면 금주 일정에서 사라짐',
+  ok('예약 취소하면 금주 일정에서 사라짐',
     allItems(sched3).filter(i => i.type === '상담' && i.label.includes('E2E민준')).length === 0);
 
   // 잘못된 형식은 거부

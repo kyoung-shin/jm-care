@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import {
-  X, FileText, Printer, Download, Eye, Send,
+  X, FileText, Printer, Download, Send,
   TrendingUp, MessageSquare, BookOpen, ShieldCheck,
   Check, Edit3, Clock, Target, CheckCircle2,
 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
 import { statusConfig, actionStatusConfig } from '@/lib/dummy-data';
-import { buildReportModel, formatPeriodLabel, resolveCriteria, resolveRoadmap,
+import { buildReportModel, formatPeriodLabel, resolveCriteria, resolveReportRoadmap,
   type CriteriaRow, type RoadmapRow } from '@/lib/report-data';
 import { subjectsForGrade } from '@/lib/subjects';
 import { computeScoreDomain, isWithinDomain } from '@/lib/chart-scale';
@@ -20,6 +20,8 @@ interface Props {
   studentName?: string;
   reportId?: string;
   onSent?: () => void;
+  /** 넘기면 헤더에서 리포트 대상 학생을 바꿀 수 있다 (원장·강사 화면) */
+  students?: Array<{ id: string; name: string; grade?: string }>;
 }
 
 interface RealMockExam {
@@ -55,6 +57,7 @@ interface RealStudentData {
   finalGoalTrack: string | null;
   daysUntilCSAT: number | null;
   subjectTargets: Record<string, number> | null;
+  roadmap?: unknown;
   instructor: { name: string } | null;
   branch: { name: string } | null;
   mockExams: RealMockExam[];
@@ -100,16 +103,22 @@ function SentState({ onClose, studentName, period, sentAtLabel }: { onClose: () 
   );
 }
 
-export default function ReportModal({ mode, onClose, studentId, studentName, reportId, onSent }: Props) {
+function defaultMessage(name?: string | null) {
+  return `안녕하세요, ${name ?? '학생'} 학부모님. 담임 강사입니다.\n\n` +
+    `이번 리포트에는 그동안의 성장을 함께 담았습니다. 궁금하신 점은 언제든 연락 주십시오.`;
+}
+
+export default function ReportModal({ mode, onClose, studentId: initialStudentId, studentName, reportId, onSent, students }: Props) {
   const isDirector = mode === 'director';
   const [step, setStep] = useState<'review' | 'sent'>(isDirector ? 'review' : 'review');
   const [parentPeriod, setParentPeriod] = useState('');
   const [includeGrades, setIncludeGrades] = useState(true);
   const [editingMessage, setEditingMessage] = useState(false);
-  const [message, setMessage] = useState(
-    `안녕하세요, ${studentName ?? '학생'} 학부모님. 담임 강사입니다.\n\n` +
-    `이번 리포트에는 그동안의 성장을 함께 담았습니다. 궁금하신 점은 언제든 연락 주십시오.`
-  );
+  // 헤더의 학생 선택으로 바뀔 수 있다
+  const [studentId, setStudentId] = useState(initialStudentId);
+  const [message, setMessage] = useState(() => defaultMessage(studentName));
+  // 강사가 직접 고친 메시지는 학생을 바꿔도 덮어쓰지 않는다
+  const [messageEdited, setMessageEdited] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const [downloading, setDownloading] = useState(false);
@@ -126,10 +135,22 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
   // 실제 학생 데이터(목표·모의고사 성적 등) 로드
   useEffect(() => {
     if (!studentId) return;
+    let cancelled = false;
     fetch(`/api/students/${studentId}`).then(r => r.json()).then(d => {
-      if (!d.error) setRealStudent(d);
+      if (!cancelled && !d.error) setRealStudent(d);
     }).catch(() => {});
+    return () => { cancelled = true; };
   }, [studentId]);
+
+  const switchStudent = (id: string) => {
+    if (id === studentId) return;
+    setStudentId(id);
+    setRealStudent(null);
+    setSelectedExamIdx(-1);
+    setSendError('');
+    setPdfError('');
+    if (!messageEdited) setMessage(defaultMessage(students?.find(s => s.id === id)?.name));
+  };
 
   // 본사 기준표·로드맵 (없으면 해당 섹션을 그리지 않는다)
   useEffect(() => {
@@ -165,7 +186,8 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
   const period = isDirector ? (model?.period ?? '') : parentPeriod;
   const subjectDefs = subjectsForGrade(realStudent?.grade);
   const criteria = resolveCriteria(model?.latestExam?.avg ?? null, criteriaRows);
-  const roadmapPlan = resolveRoadmap(realStudent?.finalGoalSchool, realStudent?.grade, roadmapRows);
+  // 담임이 학생별로 입력한 로드맵이 있으면 그것을, 없으면 본사 목표별 표를 쓴다 (PDF 와 같은 규칙)
+  const roadmapPlan = realStudent ? resolveReportRoadmap(realStudent, roadmapRows) : null;
 
   const handleSend = async () => {
     if (!studentId) { setSendError('발송 대상 학생 정보를 찾을 수 없습니다'); return; }
@@ -269,8 +291,24 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {isDirector && step === 'review' && students && students.length > 0 && (
+                <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                  학생 선택
+                  <select
+                    aria-label="리포트 대상 학생"
+                    value={studentId ?? ''}
+                    onChange={e => switchStudent(e.target.value)}
+                    className="text-xs border border-stone-300 rounded px-2 py-1.5 bg-white font-semibold text-slate-900"
+                  >
+                    {students.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}{s.grade ? ` · ${s.grade}` : ''}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {isDirector && step === 'review' && (
                 <select
+                  aria-label="리포트 기준 회차"
                   value={effectiveExamIdx}
                   onChange={e => setSelectedExamIdx(Number(e.target.value))}
                   disabled={!realStudent || realStudent.mockExams.length === 0}
@@ -339,7 +377,7 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                       <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-amber-400/10 -translate-y-12 translate-x-12 blur-2xl" />
                       <div className="relative flex justify-between items-start">
                         <div>
-                          <div className="text-[10px] uppercase tracking-[0.25em] text-amber-300 mb-2">JONGNO M-SCHOOL · Monthly Report</div>
+                          <div className="text-[10px] uppercase tracking-[0.25em] text-amber-300 mb-2">JONGRO M-SCHOOL · Monthly Report</div>
                           <div className="serif-ko text-3xl font-black leading-tight">월간 학습 리포트</div>
                           <div className="text-sm text-slate-300 mt-2">{period} · {displayName} 학생</div>
                         </div>
@@ -469,7 +507,7 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
                         </div>
                         <div className="bg-stone-50/70 rounded-lg border border-stone-200 p-5">
                           {editingMessage ? (
-                            <textarea value={message} onChange={e => setMessage(e.target.value)} className="w-full min-h-[220px] text-sm text-slate-700 leading-relaxed bg-white border border-stone-300 rounded p-3 resize-y" />
+                            <textarea value={message} onChange={e => { setMessage(e.target.value); setMessageEdited(true); }} className="w-full min-h-[220px] text-sm text-slate-700 leading-relaxed bg-white border border-stone-300 rounded p-3 resize-y" />
                           ) : (
                             <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{message}</div>
                           )}
@@ -578,7 +616,6 @@ export default function ReportModal({ mode, onClose, studentId, studentName, rep
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={onClose} className="px-4 py-2 text-xs text-slate-700 hover:bg-stone-100 rounded">취소</button>
-                <button className="px-4 py-2 text-xs bg-white border border-stone-300 rounded hover:bg-stone-50 flex items-center gap-1.5"><Eye size={12} /> 학부모 화면 미리보기</button>
                 <button
                   onClick={handleDownloadPdf}
                   disabled={downloading || !pdfReady}

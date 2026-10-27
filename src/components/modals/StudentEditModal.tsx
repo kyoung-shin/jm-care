@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { X, Save, AlertCircle, UserCog } from 'lucide-react';
+import GoalPicker, { useAdmissionCatalog } from '@/components/GoalPicker';
 
 interface Props {
   studentId: string;
@@ -42,6 +43,10 @@ export default function StudentEditModal({ studentId, branchId, onClose, onSaved
   const [saved, setSaved] = useState(false);
 
   const update = (k: keyof StudentForm, v: string) => setForm(p => ({ ...p, [k]: v }));
+  // 목표 학교·계열·모집시기를 입시 전형 DB 에서 고른다
+  const catalog = useAdmissionCatalog();
+  const goalField = (tier: 'final' | 'mid', f: 'school' | 'detail' | 'track') =>
+    `${tier}Goal${f.charAt(0).toUpperCase()}${f.slice(1)}` as keyof StudentForm;
 
   useEffect(() => {
     let cancelled = false;
@@ -161,20 +166,30 @@ export default function StudentEditModal({ studentId, branchId, onClose, onSaved
                   <div className="text-xs font-bold text-slate-700 mb-3 uppercase tracking-wider">목표</div>
                   <div className="space-y-4">
                     <div>
-                      <div className="text-[10px] text-amber-600 font-bold mb-2">최종 목표</div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <input className={inputCls} placeholder="고려대학교" value={form.finalGoalSchool} onChange={e => update('finalGoalSchool', e.target.value)} />
-                        <input className={inputCls} placeholder="공학계열 희망" value={form.finalGoalDetail} onChange={e => update('finalGoalDetail', e.target.value)} />
-                        <input className={inputCls} placeholder="수시·정시 트랙" value={form.finalGoalTrack} onChange={e => update('finalGoalTrack', e.target.value)} />
-                      </div>
+                      <div className="text-[10px] text-amber-600 font-bold mb-2">최종 목표 <span className="text-slate-400 font-normal">· 입시 전형 DB 에서 선택하거나 직접 입력</span></div>
+                      <GoalPicker
+                        catalog={catalog}
+                        label="최종 목표"
+                        className={inputCls}
+                        school={form.finalGoalSchool}
+                        detail={form.finalGoalDetail}
+                        track={form.finalGoalTrack}
+                        placeholders={{ school: '목표 학교 선택', detail: '계열/학과 선택', track: '모집시기 선택' }}
+                        onChange={(f, v) => update(goalField('final', f), v)}
+                      />
                     </div>
                     <div>
                       <div className="text-[10px] text-slate-500 font-bold mb-2">중간 목표</div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <input className={inputCls} placeholder="일반고 상위권" value={form.midGoalSchool} onChange={e => update('midGoalSchool', e.target.value)} />
-                        <input className={inputCls} placeholder="내신 1점대 진입" value={form.midGoalDetail} onChange={e => update('midGoalDetail', e.target.value)} />
-                        <input className={inputCls} placeholder="트랙" value={form.midGoalTrack} onChange={e => update('midGoalTrack', e.target.value)} />
-                      </div>
+                      <GoalPicker
+                        catalog={catalog}
+                        label="중간 목표"
+                        className={inputCls}
+                        school={form.midGoalSchool}
+                        detail={form.midGoalDetail}
+                        track={form.midGoalTrack}
+                        placeholders={{ school: '중간 목표 선택 (예: 자사고)', detail: '세부 (예: 내신 1점대)', track: '트랙' }}
+                        onChange={(f, v) => update(goalField('mid', f), v)}
+                      />
                     </div>
                   </div>
                 </section>

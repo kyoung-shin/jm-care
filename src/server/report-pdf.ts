@@ -70,10 +70,9 @@ export interface ReportInput {
   includeGrades: boolean;
   /** 업로드된 판정 기준표로 계산한 전국 위치 */
   criteria?: { tierLabel: string; verdict: string; percentile: number; below: boolean } | null;
-  /** 업로드된 목표별 학년 로드맵 */
+  /** 학년별 로드맵 — 담임 입력분이 있으면 그것, 없으면 업로드된 목표별 표 */
   roadmap?: {
     goal: string;
-    stage: string | null;
     steps: { stage: string; content: string }[];
     currentIdx: number;
   } | null;
@@ -304,7 +303,7 @@ export async function buildReportPdf(data: ReportInput): Promise<Uint8Array> {
     d.y = top - 40 - 6;
   }
 
-  // ── 목표별 학년 로드맵 (업로드된 표) ────────────────────────
+  // ── 학년별 로드맵 (담임 입력 또는 업로드된 표) ──────────────
   if (data.roadmap && data.roadmap.steps.length > 0) {
     d.sectionTitle(`학년별 학습 로드맵 — ${data.roadmap.goal}`);
     data.roadmap.steps.forEach((step, i) => {

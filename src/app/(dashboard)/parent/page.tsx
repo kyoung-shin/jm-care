@@ -197,7 +197,7 @@ export default function ParentPage() {
     <div className="bg-[#f9f6f0] min-h-screen">
       <div className="max-w-5xl mx-auto px-8 py-10">
         <div className="mb-8 pb-6 border-b border-stone-300/60">
-          <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-2">JONGNO M-SCHOOL · For Parents</div>
+          <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-2">JONGRO M-SCHOOL · For Parents</div>
           {siblings.length > 1 && (
             <div className="flex items-center gap-2 mb-4">
               <span className="text-[11px] text-slate-500 shrink-0">자녀 선택</span>
@@ -218,7 +218,7 @@ export default function ParentPage() {
               </div>
             </div>
           )}
-          <div className="serif-ko text-[36px] font-black text-slate-900 leading-tight">{parentName}, 안녕하세요.</div>
+          <div className="serif-ko text-[36px] font-black text-slate-900 leading-tight">{parentName}님, 안녕하세요.</div>
           <div className="text-base text-slate-600 mt-2.5 leading-relaxed">
             <span className="font-bold text-slate-900">{child.name}</span> 학생이 종로엠스쿨과 {enrollmentPhrase(child.enrolledMonths)} 그 성장의 기록을 안내드립니다.
           </div>

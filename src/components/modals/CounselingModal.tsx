@@ -9,14 +9,23 @@ interface Props {
   data?: CounselingRecord;
   prefill?: { subject?: string; topic?: string; summary?: string; action?: string } | null;
   studentName?: string;
+  /** 넘기면 상담 대상 학생을 모달 안에서 고른다 (강사 화면) */
+  students?: Array<{ id: string; name: string; grade?: string }>;
   onClose: () => void;
-  onSave: (record: CounselingRecord) => void;
+  onSave: (record: CounselingRecord, studentId?: string) => void;
   onToggleAction: (date: string) => void;
 }
 
-export default function CounselingModal({ mode, data, prefill, studentName, onClose, onSave, onToggleAction }: Props) {
+function todayDotted() {
+  const d = new Date();
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export default function CounselingModal({ mode, data, prefill, studentName, students, onClose, onSave, onToggleAction }: Props) {
   const isNew = mode === 'new';
-  const today = '2026.05.12';
+  const today = todayDotted();
+  const [studentId, setStudentId] = useState(students?.[0]?.id ?? '');
+  const selectedName = students?.find(s => s.id === studentId)?.name ?? studentName;
 
   const [form, setForm] = useState({
     date: today,
@@ -34,6 +43,7 @@ export default function CounselingModal({ mode, data, prefill, studentName, onCl
   const update = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
   const handleSave = () => {
+    if (students && students.length > 0 && !studentId) { alert('상담 학생을 선택해 주세요.'); return; }
     if (!form.summary.trim()) { alert('상담 내용을 입력해 주세요.'); return; }
     onSave({
       date: form.date, type: form.type, topic: form.topic,
@@ -45,7 +55,7 @@ export default function CounselingModal({ mode, data, prefill, studentName, onCl
         deadline: form.actionDeadline,
         status: 'in-progress',
       },
-    });
+    }, studentId || undefined);
   };
 
   return (
@@ -62,7 +72,7 @@ export default function CounselingModal({ mode, data, prefill, studentName, onCl
               <div>
                 <div className="serif-ko text-lg font-bold text-slate-900">{isNew ? '새 상담 기록 작성' : '상담 상세'}</div>
                 <div className="text-xs text-slate-500">
-                  {studentName ?? '학생'} · {isNew ? '작성 후 종합 현황에 즉시 반영됩니다' : `${data?.date} · ${data?.type}`}
+                  {selectedName ?? '학생'} · {isNew ? '작성 후 종합 현황에 즉시 반영됩니다' : `${data?.date} · ${data?.type}`}
                 </div>
               </div>
             </div>
@@ -78,6 +88,20 @@ export default function CounselingModal({ mode, data, prefill, studentName, onCl
                   <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
                     <Sparkles size={13} className="mt-0.5 shrink-0 text-amber-600" />
                     <span>갭 분석의 <span className="font-bold">{prefill.subject}</span> 항목에서 연결되어 내용과 액션이 미리 채워졌습니다. 수정 후 저장하세요.</span>
+                  </div>
+                )}
+
+                {students && students.length > 0 && (
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 mb-1.5 block">상담 학생 <span className="text-red-500">*</span></label>
+                    <select
+                      aria-label="상담 학생"
+                      value={studentId}
+                      onChange={e => setStudentId(e.target.value)}
+                      className="w-full text-sm border border-stone-300 rounded-lg px-3 py-2 bg-white"
+                    >
+                      {students.map(s => <option key={s.id} value={s.id}>{s.name}{s.grade ? ` · ${s.grade}` : ''}</option>)}
+                    </select>
                   </div>
                 )}
 

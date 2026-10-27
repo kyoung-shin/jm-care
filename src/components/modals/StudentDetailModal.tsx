@@ -23,6 +23,8 @@ interface StudentDetail {
   finalGoalDetail: string | null;
   finalGoalTrack: string | null;
   midGoalSchool: string | null;
+  recordSpecialNotes?: string | null;
+  recordRemarks?: string | null;
   daysUntilCSAT: number | null;
   overallReadiness: number | null;
   peerAverage: number | null;
@@ -52,6 +54,11 @@ export default function StudentDetailModal({ studentId, onClose, onEditStatus }:
     });
     return () => { cancelled = true; };
   }, [studentId]);
+
+  // 성적을 고친 뒤 표·요약을 다시 그린다
+  const reloadStudent = () => {
+    fetch(`/api/students/${studentId}`).then(r => r.json()).then(s => { if (s && !s.error) setStudent(s); }).catch(() => {});
+  };
 
   const model = useMemo(() => {
     if (!student) return null;
@@ -156,8 +163,25 @@ export default function StudentDetailModal({ studentId, onClose, onEditStatus }:
                   </div>
                 )}
 
+                {/* 학생부 기록 (현황 입력에서 작성) */}
+                {(student.recordSpecialNotes || student.recordRemarks) && (
+                  <div className="bg-white border border-stone-200 rounded-xl p-5">
+                    <div className="serif-ko text-base font-bold text-slate-900 mb-3">학생부 기록</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-stone-50 border border-stone-200 rounded-lg p-3">
+                        <div className="text-[10px] text-slate-500 mb-1">세특사항</div>
+                        <div className="text-xs text-slate-800 whitespace-pre-line leading-relaxed">{student.recordSpecialNotes || '—'}</div>
+                      </div>
+                      <div className="bg-stone-50 border border-stone-200 rounded-lg p-3">
+                        <div className="text-[10px] text-slate-500 mb-1">학생부 특이사항</div>
+                        <div className="text-xs text-slate-800 whitespace-pre-line leading-relaxed">{student.recordRemarks || '—'}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* 모의고사 추이 */}
-                <MockExamChart mockExams={student.mockExams} grade={student.grade} compact />
+                <MockExamChart mockExams={student.mockExams} grade={student.grade} studentId={student.id} onChanged={reloadStudent} />
 
                 {/* 상담 기록 */}
                 <div className="bg-white border border-stone-200 rounded-xl p-5">

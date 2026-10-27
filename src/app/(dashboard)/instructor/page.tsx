@@ -16,6 +16,7 @@ import StudentPickerModal from '@/components/modals/StudentPickerModal';
 import ScheduleEventModal from '@/components/modals/ScheduleEventModal';
 import Footer from '@/components/dashboard/Footer';
 import { statusConfig, actionStatusConfig, type CounselingRecord } from '@/lib/dummy-data';
+import { todayStr, formatSlot, parseSlot } from '@/lib/slot';
 
 const bookingStatusConfig: Record<string, { label: string; bg: string; text: string }> = {
   pending: { label: '검토 중', bg: 'bg-amber-100', text: 'text-amber-700' },
@@ -97,7 +98,7 @@ function InstructorPage() {
   const [detailStudent, setDetailStudent] = useState<RealStudent | null>(null);
   // 확정된 예약의 일시를 바꾸는 중인 항목
   const [reschedule, setReschedule] = useState<string | null>(null);
-  const [customSlot, setCustomSlot] = useState<Record<string, string>>({});
+  const [customSlot, setCustomSlot] = useState<Record<string, { date: string; time: string }>>({});
   const [apptError, setApptError] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -170,13 +171,13 @@ function InstructorPage() {
     );
   }
 
-  const counselingTarget = summary.students[0];
-
-  const handleSaveCounseling = async (record: CounselingRecord) => {
+  // 상담 대상은 모달에서 고른 학생이다 (예전에는 목록 첫 학생으로 고정돼 있었다)
+  const handleSaveCounseling = async (record: CounselingRecord, targetId?: string) => {
     setCounselingModal(null);
-    if (!counselingTarget) return;
+    const target = targetId ?? summary.students[0]?.id;
+    if (!target) return;
     try {
-      await fetch(`/api/students/${counselingTarget.id}/counselings`, {
+      await fetch(`/api/students/${target}/counselings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record),
@@ -467,15 +468,26 @@ function InstructorPage() {
                         ))}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
+                        {/* 달력·시간 선택으로 일시를 고른다. 서버가 받는 "2026.09.28(월) 14:00" 형식은 formatSlot 이 조립한다 */}
                         <input
-                          value={customSlot[a.id] ?? ''}
-                          onChange={e => setCustomSlot(c => ({ ...c, [a.id]: e.target.value }))}
-                          placeholder="직접 입력 예: 2026.09.28(월) 14:00"
-                          className="text-[11px] num border border-stone-300 rounded-lg px-2.5 py-1.5 w-60 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                          type="date"
+                          aria-label="직접 선택 날짜"
+                          value={customSlot[a.id]?.date ?? ''}
+                          min={todayStr()}
+                          onChange={e => setCustomSlot(c => ({ ...c, [a.id]: { date: e.target.value, time: c[a.id]?.time ?? '' } }))}
+                          className="text-[11px] num border border-stone-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        />
+                        <input
+                          type="time"
+                          aria-label="직접 선택 시간"
+                          step={600}
+                          value={customSlot[a.id]?.time ?? ''}
+                          onChange={e => setCustomSlot(c => ({ ...c, [a.id]: { date: c[a.id]?.date ?? '', time: e.target.value } }))}
+                          className="text-[11px] num border border-stone-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
                         />
                         <button
-                          onClick={() => handleDecideAppointment(a.id, 'confirmed', customSlot[a.id])}
-                          disabled={!customSlot[a.id]?.trim()}
+                          onClick={() => handleDecideAppointment(a.id, 'confirmed', formatSlot(customSlot[a.id]?.date ?? '', customSlot[a.id]?.time ?? ''))}
+                          disabled={!customSlot[a.id]?.date || !customSlot[a.id]?.time}
                           className="text-[11px] px-2.5 py-1.5 bg-slate-900 text-white rounded-lg font-semibold hover:bg-slate-800 disabled:opacity-40"
                         >
                           이 일시로 확정
@@ -484,7 +496,7 @@ function InstructorPage() {
                           onClick={() => handleDecideAppointment(a.id, 'declined')}
                           className="text-[11px] px-2.5 py-1.5 border border-stone-300 rounded-lg hover:border-red-300 hover:bg-red-50 hover:text-red-600 text-slate-500 font-semibold transition-colors"
                         >
-                          {reschedule === a.id ? '거절로 변경' : '거절'}
+                          {reschedule === a.id ? '예약 취소' : '거절'}
                         </button>
                         {reschedule === a.id && (
                           <button onClick={() => setReschedule(null)} className="text-[11px] px-2 py-1.5 text-slate-500 hover:text-slate-800">취소</button>
@@ -498,7 +510,12 @@ function InstructorPage() {
                         {a.status === 'confirmed' && <span className="text-slate-400 ml-1.5">· 금주 일정에 표시됩니다</span>}
                       </div>
                       <button
-                        onClick={() => setReschedule(a.id)}
+                        onClick={() => {
+                          setReschedule(a.id);
+                          // 지금 확정된 일시를 달력에 미리 띄워 두고 바꿀 부분만 고르게 한다
+                          const current = parseSlot(a.confirmedSlot);
+                          if (current.date) setCustomSlot(c => ({ ...c, [a.id]: current }));
+                        }}
                         className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 border border-stone-300 rounded-lg text-slate-700 hover:bg-stone-50 shrink-0"
                       >
                         <CalendarClock size={11} /> {a.status === 'confirmed' ? '일시 변경' : '다시 처리'}
@@ -536,6 +553,7 @@ function InstructorPage() {
           mode="director"
           studentId={reportTarget.id}
           studentName={reportTarget.name}
+          students={summary.students}
           onClose={() => { setReportOpen(false); setReportTarget(null); }}
         />
       )}
@@ -543,7 +561,7 @@ function InstructorPage() {
         <CounselingModal
           mode="new"
           prefill={null}
-          studentName={counselingTarget?.name}
+          students={summary.students}
           onClose={() => setCounselingModal(null)}
           onSave={handleSaveCounseling}
           onToggleAction={() => {}}
