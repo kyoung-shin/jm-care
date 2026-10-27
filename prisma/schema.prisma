@@ -144,6 +144,9 @@ model PendingUser {
   branchId      String?
   branch        Branch?   @relation(fields: [branchId], references: [id])
   reason        String?
+  // 학생 가입 신청 시 학생이 적은 학부모 정보 — 원장 승인 화면에서 학부모 계정과 맞춰 본다
+  parentName    String?
+  parentPhone   String?
   status        String    @default("PENDING")
   approvedAt    DateTime?
   approvedBy    String?

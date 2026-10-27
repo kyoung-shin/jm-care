@@ -6,7 +6,7 @@ import { createSessionToken, SESSION_COOKIE } from '@/lib/session';
 
 export async function POST(req: Request) {
   try {
-    const { username, password, name, phone, email, requestedRole, branchId, reason } = await req.json();
+    const { username, password, name, phone, email, requestedRole, branchId, reason, parentName, parentPhone } = await req.json();
 
     if (!['DIRECTOR', 'INSTRUCTOR', 'PARENT', 'STUDENT'].includes(requestedRole)) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
@@ -36,6 +36,12 @@ export async function POST(req: Request) {
       }
     }
 
+    // 학부모 정보는 학생 신청에서만 받는다 (승인 시 학부모 계정과 맞춰 보는 용도)
+    const clean = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 50) : null);
+    const parentInfo = requestedRole === 'STUDENT'
+      ? { parentName: clean(parentName), parentPhone: clean(parentPhone) }
+      : {};
+
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = await prisma.$transaction(async tx => {
@@ -43,7 +49,7 @@ export async function POST(req: Request) {
         data: { username, passwordHash, name, phone, email: email || null, role: 'PENDING', branchId },
       });
       await tx.pendingUser.create({
-        data: { userId: created.id, name, email: email || null, phone, requestedRole, branchId, reason },
+        data: { userId: created.id, name, email: email || null, phone, requestedRole, branchId, reason, ...parentInfo },
       });
       return created;
     });

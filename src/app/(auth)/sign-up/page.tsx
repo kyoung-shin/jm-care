@@ -29,6 +29,9 @@ export default function SignUpPage() {
     branchId: '',
     requestedRole: '',
     reason: '',
+    // 학생 신청일 때만 — 원장 승인 시 학부모 계정과 연결하는 데 쓴다
+    parentName: '',
+    parentPhone: '',
   });
   const [usernameCheck, setUsernameCheck] = useState<UsernameCheckStatus>('idle');
   const [checkedUsername, setCheckedUsername] = useState('');
@@ -84,6 +87,9 @@ export default function SignUpPage() {
           branchId: form.branchId,
           requestedRole: form.requestedRole,
           reason: form.reason,
+          ...(form.requestedRole === 'STUDENT'
+            ? { parentName: form.parentName || undefined, parentPhone: form.parentPhone || undefined }
+            : {}),
         }),
       });
       if (!res.ok) {
@@ -240,6 +246,32 @@ export default function SignUpPage() {
             ))}
           </div>
         </div>
+
+        {form.requestedRole === 'STUDENT' && (
+          <div className="border border-stone-200 rounded-xl p-4 bg-stone-50/60">
+            <div className="text-xs font-semibold text-slate-700 mb-0.5">학부모 정보 <span className="text-slate-400 font-normal">(선택)</span></div>
+            <div className="text-[11px] text-slate-500 mb-3">
+              적어 주시면 원장님이 승인할 때 학부모님 계정과 바로 연결합니다. 학부모님 가입 시 쓰신 연락처와 같게 적어 주세요.
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                aria-label="학부모 이름"
+                value={form.parentName}
+                onChange={e => setForm(f => ({ ...f, parentName: e.target.value }))}
+                className="w-full text-sm bg-white border border-stone-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                placeholder="학부모 이름"
+              />
+              <input
+                aria-label="학부모 연락처"
+                value={form.parentPhone}
+                onChange={e => setForm(f => ({ ...f, parentPhone: e.target.value }))}
+                className="w-full text-sm bg-white border border-stone-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                placeholder="학부모 연락처 010-0000-0000"
+                inputMode="tel"
+              />
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="text-xs font-semibold text-slate-600 mb-1.5 block">

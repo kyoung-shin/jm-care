@@ -14,6 +14,12 @@ interface PendingUser {
   reason?: string;
   status: string;
   createdAt: string;
+  /** 학생 신청에서 학생이 적은 학부모 정보 */
+  parentName?: string | null;
+  parentPhone?: string | null;
+  /** 서버가 연락처·이름으로 찾아 준 연결 후보 */
+  suggestedParentIds?: string[];
+  suggestedStudentIds?: string[];
 }
 interface Student {
   id: string;
@@ -36,6 +42,8 @@ function DirectorUsersPage() {
   const [applications, setApplications] = useState<PendingUser[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [selected, setSelected] = useState<Record<string, string[]>>({});
+  // 학생 신청 승인 시 함께 연결할 학부모 (userId → 학부모 id 목록)
+  const [parentSel, setParentSel] = useState<Record<string, string[]>>({});
   const [queries, setQueries] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -57,7 +65,24 @@ function DirectorUsersPage() {
         : Promise.resolve([]),
       fetch('/api/director/parents').then(r => (r.ok ? r.json() : [])).catch(() => []),
     ]);
-    if (Array.isArray(p)) setApplications(p);
+    if (Array.isArray(p)) {
+      setApplications(p);
+      // 자동 매칭된 후보를 미리 체크해 둔다. 원장이 이미 고친 항목은 건드리지 않는다.
+      setSelected(prev => {
+        const next = { ...prev };
+        for (const a of p as PendingUser[]) {
+          if (next[a.userId] === undefined && a.suggestedStudentIds?.length) next[a.userId] = a.suggestedStudentIds;
+        }
+        return next;
+      });
+      setParentSel(prev => {
+        const next = { ...prev };
+        for (const a of p as PendingUser[]) {
+          if (next[a.userId] === undefined && a.suggestedParentIds?.length) next[a.userId] = a.suggestedParentIds;
+        }
+        return next;
+      });
+    }
     if (Array.isArray(s)) setStudents(s);
     if (Array.isArray(pa)) {
       setParents(pa);
@@ -115,7 +140,10 @@ function DirectorUsersPage() {
       const res = await fetch(`/api/director/users/${p.userId}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentIds: selected[p.userId] ?? [] }),
+        body: JSON.stringify({
+          studentIds: selected[p.userId] ?? [],
+          ...(p.requestedRole === 'STUDENT' ? { parentIds: parentSel[p.userId] ?? [] } : {}),
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -165,6 +193,14 @@ function DirectorUsersPage() {
               <div className={`text-xs mt-1 ${isRejected ? 'text-slate-500' : 'text-amber-700'}`}>
                 신청 역할: {ROLE_LABELS[p.requestedRole] || p.requestedRole}{p.reason && ` · ${p.reason}`}
               </div>
+              {p.requestedRole === 'STUDENT' && (p.parentName || p.parentPhone) && (
+                <div className="text-xs mt-1 text-slate-600">
+                  학생이 적은 학부모: <span className="font-semibold">{[p.parentName, p.parentPhone].filter(Boolean).join(' · ')}</span>
+                </div>
+              )}
+              {p.requestedRole === 'PARENT' && (p.suggestedStudentIds?.length ?? 0) > 0 && (
+                <div className="text-xs mt-1 text-emerald-700">이 학부모를 적어 낸 학생 계정이 있어 자녀를 미리 선택했습니다</div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -260,6 +296,50 @@ function DirectorUsersPage() {
             )}
           </div>
         )}
+
+        {p.requestedRole === 'STUDENT' && (() => {
+          const chosenParents = parentSel[p.userId] ?? [];
+          const suggested = p.suggestedParentIds ?? [];
+          return (
+            <div data-parent-link={p.userId} className={`mt-4 pt-4 border-t ${isRejected ? 'border-stone-200' : 'border-amber-200'}`}>
+              <div className="text-xs font-semibold text-slate-600 mb-2">
+                연결할 학부모 <span className="text-slate-400 font-normal">(선택 · 여러 명 가능)</span>
+                {chosenParents.length > 0 && <span className="text-emerald-700 ml-1.5">· {chosenParents.length}명 선택됨</span>}
+              </div>
+              {parents.length === 0 ? (
+                <div className="text-xs text-slate-500">
+                  우리 지점에 승인된 학부모 계정이 아직 없습니다. 학부모가 나중에 가입하면 그 승인 화면에서 이 학생을 자녀로 연결할 수 있습니다.
+                </div>
+              ) : (
+                <>
+                  {(p.parentName || p.parentPhone) && suggested.length === 0 && (
+                    <div className="text-[11px] text-amber-700 mb-2">학생이 적은 학부모와 연락처가 일치하는 계정을 찾지 못했습니다. 아래에서 직접 골라 주세요.</div>
+                  )}
+                  <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto">
+                    {parents.map(par => {
+                      const on = chosenParents.includes(par.id);
+                      return (
+                        <button
+                          key={par.id}
+                          onClick={() => setParentSel(prev => ({
+                            ...prev,
+                            [p.userId]: on ? chosenParents.filter(i => i !== par.id) : [...chosenParents, par.id],
+                          }))}
+                          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                            on ? 'border-slate-900 bg-slate-900 text-white' : 'border-stone-300 bg-white text-slate-700 hover:border-slate-400'
+                          }`}
+                        >
+                          {par.name}{par.phone ? ` · ${par.phone}` : ''}
+                          {suggested.includes(par.id) && <span className={`ml-1 ${on ? 'text-emerald-300' : 'text-emerald-700'}`}>· 일치</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   };

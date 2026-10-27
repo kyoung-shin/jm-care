@@ -22,6 +22,10 @@ export async function POST(
     const studentIds: string[] = Array.isArray(body?.studentIds)
       ? body.studentIds.filter((id: unknown): id is string => typeof id === 'string' && !!id)
       : [];
+    // 학생 승인 시 함께 연결할 학부모 계정 (선택)
+    const parentIds: string[] = Array.isArray(body?.parentIds)
+      ? [...new Set<string>(body.parentIds.filter((id: unknown): id is string => typeof id === 'string' && !!id))]
+      : [];
 
     const pending = await prisma.pendingUser.findUnique({ where: { userId } });
     if (!pending || pending.branchId !== branchId || !APPROVABLE_ROLES.includes(pending.requestedRole)) {
@@ -38,6 +42,23 @@ export async function POST(
     }
     if (role === 'STUDENT' && studentIds.length > 1) {
       return NextResponse.json({ error: '학생 계정은 학생 프로필 1개에만 연결할 수 있습니다' }, { status: 400 });
+    }
+
+    if (parentIds.length > 0) {
+      if (role !== 'STUDENT') {
+        return NextResponse.json({ error: '학부모 연결은 학생 신청에서만 할 수 있습니다' }, { status: 400 });
+      }
+      const parents = await prisma.user.findMany({
+        where: { id: { in: parentIds } },
+        select: { id: true, role: true, branchId: true },
+      });
+      const bad = parentIds.find(pid => {
+        const p = parents.find(x => x.id === pid);
+        return !p || p.role !== 'PARENT' || p.branchId !== branchId;
+      });
+      if (bad) {
+        return NextResponse.json({ error: '연결할 학부모를 찾을 수 없거나 우리 지점의 승인된 학부모가 아닙니다' }, { status: 400 });
+      }
     }
 
     if (studentIds.length > 0) {
@@ -84,6 +105,13 @@ export async function POST(
         where: { userId },
         data: { status: 'APPROVED', approvedAt: new Date(), approvedBy: caller.id },
       }),
+      // 학생 프로필에 학부모를 더한다 (이미 연결된 다른 학부모는 그대로 둔다)
+      ...(role === 'STUDENT' && parentIds.length > 0
+        ? [prisma.student.update({
+            where: { id: studentIds[0] },
+            data: { parents: { connect: parentIds.map(id => ({ id })) } },
+          })]
+        : []),
     ]);
 
     return NextResponse.json({ success: true });
