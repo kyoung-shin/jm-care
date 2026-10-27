@@ -382,7 +382,9 @@ async function statusInput(fx: Fx, browser: Browser) {
   await p.getByLabel('세특사항').scrollIntoViewIfNeeded();
   await shot(p, '7-status-input');
   await p.getByRole('button', { name: /저장/ }).last().click();
-  await p.waitForTimeout(3500);
+  // 운영 DB 는 응답이 느리므로 고정 대기 대신 저장 완료 문구를 기다린다
+  await p.waitForSelector('text=저장되었습니다', { timeout: 60_000 });
+  await p.waitForTimeout(1500);
   const s = await prisma.student.findUnique({ where: { id: fx.studentA } });
   ok('세특사항 저장', s?.recordSpecialNotes === '수학 — 함수 탐구 보고서 작성', String(s?.recordSpecialNotes));
   ok('학생부 특이사항 저장', s?.recordRemarks === '학급 부회장', String(s?.recordRemarks));
@@ -399,7 +401,8 @@ async function statusInput(fx: Fx, browser: Browser) {
 
   // 학생 상세에서도 확인
   await p.locator(`[data-student-id="${fx.studentA}"]`).getByRole('button', { name: /^보기$/ }).click();
-  await p.waitForTimeout(2500);
+  await p.waitForSelector('text=전국 모의고사 누적 현황', { timeout: 60_000 });
+  await p.waitForSelector('text=학급 부회장', { timeout: 15_000 }).catch(() => {});
   ok('학생 상세에 학생부 기록 노출', await p.locator('text=학급 부회장').count() > 0);
   ok('학생 상세(강사)에서도 모의고사 수정 버튼 노출', await p.getByRole('button', { name: /^수정$/ }).count() > 0);
   await p.getByRole('button', { name: /^닫기$/ }).first().click();
@@ -445,7 +448,7 @@ async function admissionAdmin(fx: Fx, browser: Browser) {
   ok('학교 정보 수정에 "전체 삭제" 버튼', await p.getByRole('button', { name: /전체 삭제/ }).count() > 0);
   await p.locator('input[placeholder="예: 고려대학교"]').fill(SCHOOL_DUP);
   await p.getByRole('button', { name: /^확인$/ }).click();
-  await p.waitForTimeout(2000);
+  await p.getByRole('button', { name: /으로 합치기/ }).waitFor({ timeout: 30_000 }).catch(() => {});
   await shot(p, '8-duplicate-merge');
   ok('같은 이름 학교가 있으면 500 대신 안내 + 합치기 제안', await p.locator('text=이미 등록되어 있습니다').count() > 0 && await p.getByRole('button', { name: /으로 합치기/ }).count() > 0);
   await p.getByRole('button', { name: /으로 합치기/ }).click();
