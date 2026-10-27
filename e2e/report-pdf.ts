@@ -568,7 +568,9 @@ async function runInstructor(fx: Fixture, browser: Browser) {
   ok('담당 학생에 "보기" 버튼 노출', await viewBtn.count() > 0);
   // 형제도 담당 학생이라 목록 순서가 바뀔 수 있다. 검사 대상 학생의 행을 지목한다.
   await ip.locator(`[data-student-id="${fx.studentId}"]`).getByRole('button', { name: /^보기$/ }).click();
-  await ip.waitForTimeout(3000);
+  // 운영 API 는 한 번에 2초 가까이 걸려 고정 대기로는 모자란다. 내용이 뜰 때까지 기다린다.
+  await ip.waitForSelector('text=과목별 목표 대비', { timeout: 60_000 });
+  await ip.waitForSelector('text=E2E 상담 주제', { timeout: 30_000 }).catch(() => {});
   await shot(ip, 'instructor-student-detail');
   ok('학생 상세에 목표 노출', await ip.locator('text=고려대학교').count() > 0);
   ok('학생 상세에 과목별 목표 대비 노출', await ip.locator('text=과목별 목표 대비').count() > 0);
@@ -657,7 +659,7 @@ async function runInstructor(fx: Fixture, browser: Browser) {
 
   // 목록에서 바로 상세(성적·상담) 확인
   await ip.locator(`[data-student-id="${fx.studentId}"]`).getByRole('button', { name: /^보기$/ }).click();
-  await ip.waitForTimeout(3000);
+  await ip.waitForSelector('text=E2E 상담 주제', { timeout: 60_000 }).catch(() => {});
   ok('목록에서 연 상세에 상담 내용 노출', await ip.locator('text=E2E 상담 주제').count() > 0);
   await ip.getByRole('button', { name: /^닫기$/ }).first().click();
   await ip.waitForTimeout(1000);
